@@ -3,14 +3,14 @@ import time
 from dataclasses import dataclass
 
 import cv2 as cv
+import napari
 import numpy as np
 import pyclesperanto as cle
 import skimage
 from napari.types import ImageData, LabelsData
-from numpy.ma.core import is_mask
 from skimage.filters import threshold_multiotsu
 from tqdm import tqdm
-import napari
+
 
 def get_func_gen_settings(on_time, off_time, passes, focus_distance, legacy=False, verbose=False):
     spot_width, spot_length = get_spot_size(focus_distance)
@@ -128,7 +128,7 @@ def load_scan(path: str,
             return float(np.prod(self.scan_dimensions_mm))
 
         def reslice(self,
-                    axis: tuple[int, int, int] = (1, 0, 2))-> np.ndarray:
+                    axis: tuple[int, int, int] = (1, 0, 2)) -> np.ndarray:
             self.scan = np.transpose(self.scan, axis)
 
     def read_properties(path: str):
@@ -218,8 +218,8 @@ def contact_area(image, label1, label2):
 def particle_segmentation(im: ImageData,
                           sigma: float = 0.1,
                           n_erosions: int = 2,
-                          dilation_radius: int = 1,
-                          dedicated_labels: bool = True) -> LabelsData:
+                          dilation_radius: int = 1) -> LabelsData:
+
     # allocate memory on the gpu
     smoothed_gpu = cle.create_like(im, dtype=np.float32)
     mask_gpu = cle.create_like(im, dtype=np.uint32)
@@ -238,27 +238,19 @@ def particle_segmentation(im: ImageData,
     cle.dilate_labels(mask_gpu, output_image=mask_gpu, radius=dilation_radius)
     cle.erode_connected_labels(mask_gpu, output_image=mask_gpu, radius=1)
 
-    # convert to binary mask
-    if dedicated_labels:
-        mask = cle.pull(mask_gpu)
-        del mask_gpu
-    else:
-        binary_mask_gpu = cle.create_like(mask_gpu, dtype=np.uint8)
-        cle.greater_constant(input_image=mask_gpu,
-                             output_image=binary_mask_gpu,
-                             scalar=0)
-        mask = cle.pull(binary_mask_gpu)
-        del binary_mask_gpu
+    mask = cle.pull(mask_gpu)
+    del mask_gpu
+
     return mask
 
 
 def segment_scan(scan: ImageData,
                  logging: bool = True,
-                     otsu_sigma: float = 1,
-                     particle_enlarge_radius: int = 1,
-                     particle_mask_sigma: float = 0.1,
-                     particle_erosions: int = 2,
-                     smooth_labels_radius: int = 0) -> LabelsData:
+                 otsu_sigma: float = 1,
+                 particle_enlarge_radius: int = 1,
+                 particle_mask_sigma: float = 0.1,
+                 particle_erosions: int = 2,
+                 smooth_labels_radius: int = 0) -> LabelsData:
     scan_gpu = cle.push(scan)
     smoothed_gpu = cle.create_like(scan_gpu, dtype=np.float32)
     cle.gaussian_blur(scan_gpu, output_image=smoothed_gpu, sigma_x=otsu_sigma, sigma_y=otsu_sigma, sigma_z=otsu_sigma)
@@ -271,17 +263,17 @@ def segment_scan(scan: ImageData,
     otsu_particle_mask = im >= th2
     logging and print("Finished otsu masks.")
     fine_particle_mask = particle_segmentation(scan_gpu,
-                                                     n_erosions=particle_erosions,
-                                                     sigma=particle_mask_sigma,
-                                                     dilation_radius=particle_enlarge_radius,
-                                                     dedicated_labels=False)
+                                               n_erosions=particle_erosions,
+                                               sigma=particle_mask_sigma,
+                                               dilation_radius=particle_enlarge_radius)
+
     logging and print("Finished refined particle mask.")
     # combine them
-    mask = np.zeros_like(im)
+    mask = np.zeros_like(im, dtype=np.uint32)
     mask[otsu_air_mask] = 1
     mask[otsu_polymer_mask] = 2
-    # mask[otsu_particle_mask] = 3
-    # mask[fine_particle_mask] = 3
+    mask[otsu_particle_mask] = 3
+    mask[fine_particle_mask > 0] = 3
 
     logging and print("Created full segmentation.")
 
@@ -297,6 +289,7 @@ def segment_scan(scan: ImageData,
 def reslice(scan: np.ndarray,
             axis: tuple[int, int, int] = (1, 0, 2)) -> np.ndarray:
     return np.transpose(scan, axis)
+
 
 def show_in_napari(img, *labels):
     viewer = napari.Viewer()
