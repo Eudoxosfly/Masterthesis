@@ -2,94 +2,13 @@ import os
 import time
 from dataclasses import dataclass
 
-import cv2 as cv
 import napari
 import numpy as np
 import pyclesperanto as cle
-import skimage
+import skimage.io
+from magicgui import magicgui
 from napari.types import ImageData, LabelsData
 from skimage.filters import threshold_multiotsu
-from tqdm import tqdm
-from magicgui import magicgui
-
-
-def get_func_gen_settings(on_time, off_time, passes, focus_distance, legacy=False, verbose=False):
-    spot_width, spot_length = get_spot_size(focus_distance)
-
-    speed = np.round(spot_length / (on_time + off_time) / passes, 1)
-    if legacy:
-        speed = spot_length / (on_time + off_time) // passes
-        spot_width = 2.8
-    total_time_over_spot = spot_length / speed
-    frequency = passes / total_time_over_spot
-    duty_cycle = on_time / (on_time + off_time)
-    total_time_on = total_time_over_spot * duty_cycle
-    single_time_on = total_time_on / passes
-    total_time_off = total_time_over_spot * (1 - duty_cycle)
-    single_time_off = total_time_off / passes
-
-    equivalent_energy = total_time_on * 30 / (spot_width * spot_length)
-
-    settings = {"speed": speed, "frequency": frequency, "duty_cycle": duty_cycle,
-                "total_time_over_spot": total_time_over_spot, "passes": passes, "set_on_time": on_time,
-                "actual_on_time": single_time_on, "total_on_time": total_time_on, "set_off_time": off_time,
-                "actual_off_time": single_time_off, "total_off_time": total_time_off,
-                "equivalent_energy": equivalent_energy, }
-
-    if verbose:
-        legacy and print("WARNING: Legacy mode is on. Speed is rounded down to the nearest integer.")
-        print("Settings:")
-        print("Set on time: {:.0f} ms".format(on_time * 1e3))
-        print("Set off time: {:.0f} ms".format(off_time * 1e3))
-        print("Cycles: {}".format(passes))
-        print("-" * 20)
-        print("Speed: {} mm/s".format(speed))
-        print("Frequency: {:.2f} Hz".format(frequency))
-        print("Duty cycle: {:.0f} %".format(duty_cycle * 100))
-        print("Total time over spot: {:.2f} s".format(total_time_over_spot))
-        print("Equivalent energy: {:.2f} J/mm^2".format(equivalent_energy))
-        print("-" * 20)
-        print("Actual on time: {:.0f} ms".format(single_time_on * 1e3))
-        print("Total on time: {:.0f} ms".format(total_time_on * 1e3))
-        print("Actual off time: {:.0f} ms".format(single_time_off * 1e3))
-        print("Total off time: {:.0f} ms".format(total_time_off * 1e3))
-    return settings
-
-
-def get_spot_size(distance):
-    """Calculate the spot size (mm) in x and y direction for a given focus distance."""
-
-    def get_size(coef, dist):
-        return coef[0] * dist + coef[1]
-
-    # coefficients from linear fitting
-    x_coef = (0.0498, -0.294)
-    y_coef = (0.0599, -0.285)
-
-    x = np.round(get_size(x_coef, distance), 2)
-    y = np.round(get_size(y_coef, distance), 2)
-
-    return x, y
-
-
-def downscale_1024(folder):
-    """Downscales a folders images to 1024x1024 using Lanczos interpolation."""
-
-    def down_scale_lanczos(image_path):
-        image = skimage.io.imread(image_path)
-        image = image[:, :image.shape[0]]
-        image = cv.resize(image, (1024, 1024), interpolation=cv.INTER_LANCZOS4)
-        return image
-
-    save_path = folder.replace("LM", "LM_downscaled")
-    if not os.path.isdir(save_path):
-        os.mkdir(save_path)
-
-    im_names = [folder + file for file in os.listdir(folder)]
-    for name in tqdm(im_names):
-        im = down_scale_lanczos(name)
-        im = cv.medianBlur(im, 5)
-        skimage.io.imsave(name.replace("LM", "LM_downscaled").replace(".tif", ".png"), im)
 
 
 def load_scan(path: str,
@@ -170,67 +89,10 @@ def load_scan(path: str,
     return scan
 
 
-def save_scan(scan, path, to_png=False):
-    print("Saving image to: ", path)
-    if not os.path.isdir(path):
-        os.mkdir(path)
-    for i, img in tqdm(enumerate(scan)):
-        filename = path + "slice{:04d}.{:s}".format(i, 'png' if to_png else 'tif')
-        skimage.io.imsave(filename, img, check_contrast=False)
-
-
-def save_mask(scan, path):
-    print("Saving image to: ", path)
-    if not os.path.isdir(path):
-        os.mkdir(path)
-    for i, img in tqdm(enumerate(scan)):
-        filename = path + "slice{:04d}.pdf".format(i)
-        skimage.io.imsave(filename, img, check_contrast=False)
-
-
-def print_image_info(image):
-    print("\t Shape: {}".format(image.shape))
-    print("\t Range: {}-{}".format(image.min(), image.max()))
-    print("\t Dtype: {}".format(image.dtype))
-    print("\t Unique: {}".format(np.unique(image).shape[0]))
-
-
-def contact_area(image, label1, label2):
-    """Counts the number of surfaces of label1 in contact with label2.
-
-    Args:
-        image(numpy.ndarray): Array representing image (or image stack).
-        label1(int): Value of label 1
-        label1(int): Value of label 2
-
-    Returns:
-        int: Number of voxels of label1 in contact with label2
-    """
-
-    histogram = skimage.exposure.histogram(image)
-
-    if label1 not in histogram[1] or label2 not in histogram[1]:
-        raise ValueError('One or more labels do not exist. Please input valid labels.')
-
-    x_contact_1 = np.logical_and(image[:, :, :-1] == label1, image[:, :, 1:] == label2)
-    x_contact_2 = np.logical_and(image[:, :, :-1] == label2, image[:, :, 1:] == label1)
-    y_contact_1 = np.logical_and(image[:, :-1, :] == label1, image[:, 1:, :] == label2)
-    y_contact_2 = np.logical_and(image[:, :-1, :] == label2, image[:, 1:, :] == label1)
-    z_contact_1 = np.logical_and(image[:-1, :, :] == label1, image[1:, :, :] == label2)
-    z_contact_2 = np.logical_and(image[:-1, :, :] == label2, image[1:, :, :] == label1)
-    # np.argwhere(hpairs) - counts each pair which is in contact
-
-    contact_voxels = np.count_nonzero(x_contact_1) + np.count_nonzero(x_contact_2) + np.count_nonzero(
-        y_contact_1) + np.count_nonzero(y_contact_2) + np.count_nonzero(z_contact_1) + np.count_nonzero(z_contact_2)
-
-    return contact_voxels
-
-
 def particle_segmentation(im: ImageData,
                           sigma: float = 0.1,
                           n_erosions: int = 2,
                           dilation_radius: int = 1) -> LabelsData:
-
     # allocate memory on the gpu
     smoothed_gpu = cle.create_like(im, dtype=np.float32)
     mask_gpu = cle.create_like(im, dtype=np.uint32)
@@ -263,8 +125,8 @@ def segment_scan(scan: ImageData,
                  particle_erosions: int = 2,
                  smooth_labels_radius: int = 0) -> LabelsData:
     def _particle_segmentation(im: ImageData,
-                              sigma: float = 0.1,
-                              dilation_radius: int = 1) -> LabelsData:
+                               sigma: float = 0.1,
+                               dilation_radius: int = 1) -> LabelsData:
         # allocate memory on the gpu
         smoothed_gpu = cle.create_like(im, dtype=np.float32)
         mask_gpu = cle.create_like(im, dtype=np.uint32)
@@ -295,8 +157,8 @@ def segment_scan(scan: ImageData,
     otsu_particle_mask = im >= th2
     logging and print("Finished otsu masks.")
     fine_particle_mask = _particle_segmentation(scan_gpu,
-                                               sigma=particle_mask_sigma,
-                                               dilation_radius=particle_enlarge_radius)
+                                                sigma=particle_mask_sigma,
+                                                dilation_radius=particle_enlarge_radius)
 
     logging and print("Finished refined particle mask.")
     # combine them
@@ -317,18 +179,6 @@ def segment_scan(scan: ImageData,
     return mask
 
 
-def reslice(scan: np.ndarray,
-            axis: tuple[int, int, int] = (1, 0, 2)) -> np.ndarray:
-    return np.transpose(scan, axis)
-
-
-def show_in_napari(img, *labels):
-    viewer = napari.Viewer()
-    viewer.add_image(img)
-    for label in labels:
-        viewer.add_labels(label)
-
-
 def process_subset_in_napari(scan: ImageData, subset_size: int = 30):
     @magicgui(auto_call=True)
     def segment(scan: ImageData,
@@ -345,7 +195,7 @@ def process_subset_in_napari(scan: ImageData, subset_size: int = 30):
                             smooth_labels_radius=smooth_labels_radius)
 
     n_slices, _, _ = scan.shape
-    subscan = scan[n_slices//2-subset_size//2:n_slices//2+subset_size//2, :, :]
+    subscan = scan[n_slices // 2 - subset_size // 2:n_slices // 2 + subset_size // 2, :, :]
 
     viewer = napari.Viewer()
     viewer.add_image(subscan)
