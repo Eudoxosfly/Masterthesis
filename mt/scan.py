@@ -10,46 +10,47 @@ from magicgui import magicgui
 from napari.types import ImageData, LabelsData
 from skimage.filters import threshold_multiotsu
 
+@dataclass(kw_only=True)
+class Scan:
+    scan: np.ndarray
+    voxel_size_um: float
+    scan_dimensions_mm: tuple[float, float, float] = None
+    V: float = None
+
+    def __getitem__(self, item):
+        return self.scan[item]
+
+    def __str__(self):
+        return (
+                "Scan with shape {} and voxel size {:.2f}."
+                .format(self.scan.shape, self.voxel_size_um) +
+                "\n Scanned volume: ({:.1f}x{:.1f}x{:.1f}) mm".format(*self.scan_dimensions_mm) +
+                "\n Volume: {:.2f} mm^3".format(self.V)
+
+        )
+
+    def calculate_properties(self):
+        self.scan_dimensions_mm = self.calc_dimensions()
+        self.V = self.calc_volume()
+
+    def calc_dimensions(self):
+        h, w, d = self.scan.shape
+        return (h * self.voxel_size_um * 1e3,
+                w * self.voxel_size_um * 1e3,
+                d * self.voxel_size_um * 1e3)
+
+    def calc_volume(self) -> float:
+        return float(np.prod(self.scan_dimensions_mm))
+
+    def reslice(self,
+                axis: tuple[int, int, int] = (1, 0, 2)) -> np.ndarray:
+        self.scan = np.transpose(self.scan, axis)
+
 
 def load_scan(path: str,
               ending: str = ".tif",
               logging: bool = False,
               image_range: tuple | None = None):
-    @dataclass(kw_only=True)
-    class Scan:
-        scan: np.ndarray
-        voxel_size_um: float
-        scan_dimensions_mm: tuple[float, float, float] = None
-        V: float = None
-
-        def __getitem__(self, item):
-            return self.scan[item]
-
-        def __str__(self):
-            return (
-                    "Scan with shape {} and voxel size {:.2f}."
-                    .format(self.scan.shape, self.voxel_size_um) +
-                    "\n Scanned volume: ({:.1f}x{:.1f}x{:.1f}) mm".format(*self.scan_dimensions_mm) +
-                    "\n Volume: {:.2f} mm^3".format(self.V)
-
-            )
-
-        def calculate_properties(self):
-            self.scan_dimensions_mm = self.calc_dimensions()
-            self.V = self.calc_volume()
-
-        def calc_dimensions(self):
-            h, w, d = self.scan.shape
-            return (h * self.voxel_size_um * 1e3,
-                    w * self.voxel_size_um * 1e3,
-                    d * self.voxel_size_um * 1e3)
-
-        def calc_volume(self) -> float:
-            return float(np.prod(self.scan_dimensions_mm))
-
-        def reslice(self,
-                    axis: tuple[int, int, int] = (1, 0, 2)) -> np.ndarray:
-            self.scan = np.transpose(self.scan, axis)
 
     def read_properties(path: str):
         with open(path + "unireconstruction.xml", "r") as f:
