@@ -10,6 +10,7 @@ import skimage
 from napari.types import ImageData, LabelsData
 from skimage.filters import threshold_multiotsu
 from tqdm import tqdm
+from magicgui import magicgui
 
 
 def get_func_gen_settings(on_time, off_time, passes, focus_distance, legacy=False, verbose=False):
@@ -152,7 +153,8 @@ def load_scan(path: str,
         imgs = skimage.io.imread_collection(files[image_range[0]:image_range[1]])
         scan = np.array(imgs)
         logging and print(
-            "Loaded stack with shape {} and a size of {:.2f} GB in {:.2f} s.".format(scan.shape, scan.nbytes / 1e9,
+            "Loaded stack with shape {} and a size of {:.2f} GB in {:.2f} s.".format(scan.shape,
+                                                                                     scan.nbytes / 1e9,
                                                                                      time.time() - start))
         return scan
 
@@ -174,6 +176,15 @@ def save_scan(scan, path, to_png=False):
         os.mkdir(path)
     for i, img in tqdm(enumerate(scan)):
         filename = path + "slice{:04d}.{:s}".format(i, 'png' if to_png else 'tif')
+        skimage.io.imsave(filename, img, check_contrast=False)
+
+
+def save_mask(scan, path):
+    print("Saving image to: ", path)
+    if not os.path.isdir(path):
+        os.mkdir(path)
+    for i, img in tqdm(enumerate(scan)):
+        filename = path + "slice{:04d}.pdf".format(i)
         skimage.io.imsave(filename, img, check_contrast=False)
 
 
@@ -251,6 +262,27 @@ def segment_scan(scan: ImageData,
                  particle_mask_sigma: float = 0.1,
                  particle_erosions: int = 2,
                  smooth_labels_radius: int = 0) -> LabelsData:
+    def _particle_segmentation(im: ImageData,
+                              sigma: float = 0.1,
+                              dilation_radius: int = 1) -> LabelsData:
+        # allocate memory on the gpu
+        smoothed_gpu = cle.create_like(im, dtype=np.float32)
+        mask_gpu = cle.create_like(im, dtype=np.uint32)
+
+        # apply gaussian blur and otsu threshold
+        cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
+        cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
+        del smoothed_gpu
+
+        # morphological operations removed for performance reasons
+        cle.dilate_labels(mask_gpu, output_image=mask_gpu, radius=dilation_radius)
+        cle.erode_connected_labels(mask_gpu, output_image=mask_gpu, radius=1)
+
+        mask = cle.pull(mask_gpu)
+        del mask_gpu
+
+        return mask
+
     scan_gpu = cle.push(scan)
     smoothed_gpu = cle.create_like(scan_gpu, dtype=np.float32)
     cle.gaussian_blur(scan_gpu, output_image=smoothed_gpu, sigma_x=otsu_sigma, sigma_y=otsu_sigma, sigma_z=otsu_sigma)
@@ -262,8 +294,7 @@ def segment_scan(scan: ImageData,
     otsu_polymer_mask = (im > th1) & (im < th2)
     otsu_particle_mask = im >= th2
     logging and print("Finished otsu masks.")
-    fine_particle_mask = particle_segmentation(scan_gpu,
-                                               n_erosions=particle_erosions,
+    fine_particle_mask = _particle_segmentation(scan_gpu,
                                                sigma=particle_mask_sigma,
                                                dilation_radius=particle_enlarge_radius)
 
@@ -296,3 +327,26 @@ def show_in_napari(img, *labels):
     viewer.add_image(img)
     for label in labels:
         viewer.add_labels(label)
+
+
+def process_subset_in_napari(scan: ImageData, subset_size: int = 30):
+    @magicgui(auto_call=True)
+    def segment(scan: ImageData,
+                logging: bool = False,
+                otsu_sigma: float = 0.6,
+                particle_enlarge_radius: int = 1,
+                particle_mask_sigma: float = 0.1,
+                smooth_labels_radius: int = 2) -> LabelsData:
+        return segment_scan(scan=scan,
+                            logging=logging,
+                            otsu_sigma=otsu_sigma,
+                            particle_enlarge_radius=particle_enlarge_radius,
+                            particle_mask_sigma=particle_mask_sigma,
+                            smooth_labels_radius=smooth_labels_radius)
+
+    n_slices, _, _ = scan.shape
+    subscan = scan[n_slices//2-subset_size//2:n_slices//2+subset_size//2, :, :]
+
+    viewer = napari.Viewer()
+    viewer.add_image(subscan)
+    viewer.window.add_dock_widget(segment, area='right')
