@@ -38,6 +38,7 @@ class SegmentationSettings:
 
 ## Scan io
 def load_stack(path: str,
+               folder: str = "Slices",
                file_extension: str = "tif",
                image_range: tuple | None = None,
                logging: bool = False) -> np.ndarray:
@@ -59,7 +60,7 @@ def load_stack(path: str,
     Raises:
         ValueError: If no images are found in the folder."""
 
-    path = path + "Slices/"
+    path = path + folder + "/"
     start = time.time()
     logging and print("Loading images from: ", path)
     files = [path + file for file in os.listdir(path) if file.endswith(file_extension)]
@@ -102,11 +103,11 @@ def save_scan(scan, path, to_png=False):
 
 
 def save_mask(scan, path):
-    print("Saving image to: ", path)
+    print("Saving masks to: ", path)
     if not os.path.isdir(path):
         os.mkdir(path)
     for i, img in tqdm(enumerate(scan)):
-        filename = path + "slice{:04d}.pdf".format(i)
+        filename = path + "/slice{:04d}.png".format(i)
         skimage.io.imsave(filename, img, check_contrast=False)
 
 
@@ -136,7 +137,7 @@ def divide_scan(scan, size_gb: float = 1):
 
 def particle_segmentation(im: np.ndarray[np.uint16],
                           settings: SegmentationSettings = SegmentationSettings,
-                          low_memory_mode: int = True) -> LabelsData | np.ndarray[np.int32]:
+                          low_memory_mode: float = 1) -> LabelsData | np.ndarray[np.int32]:
     """Segment particles in a 3D image using a combination of gaussian blur, otsu thresholding, and morphological operations.
 
     If low_memory_mode==True, the function will not apply erosion and subsequent masked voronoi labeling to the mask.
@@ -179,7 +180,7 @@ def particle_segmentation(im: np.ndarray[np.uint16],
     else:
         # allocate memory on the gpu
         smoothed_gpu = cle.create_like(im, dtype=np.float32)
-        mask_gpu = cle.create_like(im, dtype=np.uint32)
+        mask_gpu = cle.create_like(im, dtype=np.uint16)
 
         # apply gaussian blur and otsu threshold
         cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
@@ -235,7 +236,7 @@ def otsu_mask(scan: np.ndarray[np.uint32],
 
 def segment_scan(scan: np.ndarray[np.uint16],
                  settings: SegmentationSettings = SegmentationSettings(),
-                 low_memory_mode: bool = True) -> np.ndarray[np.uint8]:
+                 low_memory_mode: float = True) -> np.ndarray[np.uint8]:
     """Segment a 3D image into air, polymer, and particles using a combined approach of smoothing and otsu thresholding.
 
     Args:
@@ -248,14 +249,9 @@ def segment_scan(scan: np.ndarray[np.uint16],
     """
     # More precise particle segmentation (with less smoothing)
 
-    if low_memory_mode:
-        fine_particle_mask = particle_segmentation(im=scan,
-                                                   settings=settings,
-                                                   low_memory_mode=True)
-    else:
-        fine_particle_mask = particle_segmentation(im=scan,
-                                                   settings=settings,
-                                                   low_memory_mode=False)
+    fine_particle_mask = particle_segmentation(im=scan,
+                                               settings=settings,
+                                               low_memory_mode=low_memory_mode)
 
     # Otsu thresholding
     mask: np.ndarray[np.uint8] = otsu_mask(scan,
