@@ -57,7 +57,7 @@ class Scan:
     def set_segmentation_settings(self, settings: SegmentationSettings):
         self.segmentation_settings = settings
 
-    def segment(self, logging: float = 0.5):
+    def segment(self, logging: bool = True):
         if self.low_memory_mode:
             split_idxs = divide_scan(self.scan, size_gb=self.low_memory_mode)
             mask = np.zeros_like(self.scan, dtype=np.uint8)
