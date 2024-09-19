@@ -117,8 +117,7 @@ class Scan:
     # Segmentation methods
     def try_segmentation_settings(self, subset_size: int = 30):
         adjust_segmentation_parameters_on_subset(scan=self.stack,
-                                                 subset_size=subset_size,
-                                                 low_memory_mode=self.low_memory_mode)
+                                                 subset_size=subset_size)
 
     def set_segmentation_settings(self, settings: SegmentationSettings):
         self.segmentation_settings = settings
@@ -176,10 +175,11 @@ class Scan:
         return float(np.prod(self.scan_dimensions_mm))
 
     def _load_masks(self, logging: bool = False):
-        segmentation_folder_exists = os.path.exists(self.path + "Segmentation")
-        segmentation_folder_empty = len(os.listdir(self.path + "Segmentation")) == 0
-        if not segmentation_folder_exists or segmentation_folder_empty:
-            logging and print("No mask found at: {}".format(self.path + "Segmentation"))
+        if not os.path.exists(self.path + "Segmentation"):
+            logging and print("No Segmentation folder found at: {}".format(self.path + "Segmentation"))
+            return
+        if len(os.listdir(self.path + "Segmentation")) == 0:
+            logging and print("Segmentation folder is empty at: {}".format(self.path + "Segmentation"))
             return
 
         self.mask = load_stack(self.path,
