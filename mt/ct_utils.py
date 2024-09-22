@@ -29,7 +29,7 @@ class SegmentationSettings:
 
     def __str__(self):
         return (
-                "{air_mask_simga = {}".format(self.air_mask_sigma) +
+                "air_mask_simga = {}".format(self.air_mask_sigma) +
                 "\nair_n_erosions = {}".format(self.air_n_erosions) +
                 "\nparticle_mask_sigma = {}".format(self.particle_mask_sigma) +
                 "\nparticle_n_erosions = {}".format(self.particle_n_erosions) +
@@ -140,8 +140,7 @@ def divide_scan(scan, size_gb: float = 1):
 
 
 def particle_segmentation(im: np.ndarray[np.uint16],
-                          settings: SegmentationSettings = SegmentationSettings,
-                          low_memory_mode: float = 1) -> LabelsData | np.ndarray[np.int32]:
+                          settings: SegmentationSettings = SegmentationSettings) -> LabelsData | np.ndarray[np.int32]:
     """Segment particles in a 3D image using a combination of gaussian blur, otsu thresholding, and morphological operations.
 
     If low_memory_mode==True, the function will not apply erosion and subsequent masked voronoi labeling to the mask.
@@ -272,7 +271,8 @@ def segment_scan(scan: np.ndarray[np.uint16],
 
 def adjust_segmentation_parameters_on_subset(scan: ImageData,
                                              subset_size: int = 30,
-                                             autorun: bool = False) -> None:
+                                             autorun: bool = False,
+                                             segment_particles_only: bool = False) -> None:
     """Opens a napari viewer with a subset of the scan and a GUI to adjust the segmentation parameters.
 
     The parameters that can be adjusted are:
@@ -318,9 +318,54 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
 
         return segment_scan(scan, settings=settings)  # type:ignore
 
+    @magicgui(auto_call=autorun)
+    def interactive_particle_segmentation(scan: ImageData,
+                                          particle_mask_sigma: float = 0.1,
+                                          particle_n_erosions: int = 2,
+                                          particle_enlarge_radius: int = 1) -> LabelsData:
+        settings = SegmentationSettings(particle_mask_sigma=particle_mask_sigma,
+                                        particle_n_erosions=particle_n_erosions,
+                                        particle_enlarge_radius=particle_enlarge_radius)
+
+        return particle_segmentation(scan, settings=settings) # type:ignore
+
     n_slices, _, _ = scan.shape
     subscan = scan[n_slices // 2 - subset_size // 2:n_slices // 2 + subset_size // 2, :, :]
 
     viewer = napari.Viewer()
     viewer.add_image(subscan)  # type:ignore
-    viewer.window.add_dock_widget(interactive_segmentation, area='right')
+    if segment_particles_only:
+        viewer.window.add_dock_widget(interactive_particle_segmentation, area='right')
+    else:
+        viewer.window.add_dock_widget(interactive_segmentation, area='right')
+
+
+def contact_area(image, label1, label2):
+    """Counts the number of surfaces of label1 in contact with label2.
+
+    Args:
+        image(numpy.ndarray): Array representing image (or image stack).
+        label1(int): Value of label 1
+        label1(int): Value of label 2
+
+    Returns:
+        int: Number of voxels of label1 in contact with label2
+    """
+
+    histogram = skimage.exposure.histogram(image)
+
+    if label1 not in histogram[1] or label2 not in histogram[1]:
+        raise ValueError('One or more labels do not exist. Please input valid labels.')
+
+    x_contact_1 = np.logical_and(image[:, :, :-1] == label1, image[:, :, 1:] == label2)
+    x_contact_2 = np.logical_and(image[:, :, :-1] == label2, image[:, :, 1:] == label1)
+    y_contact_1 = np.logical_and(image[:, :-1, :] == label1, image[:, 1:, :] == label2)
+    y_contact_2 = np.logical_and(image[:, :-1, :] == label2, image[:, 1:, :] == label1)
+    z_contact_1 = np.logical_and(image[:-1, :, :] == label1, image[1:, :, :] == label2)
+    z_contact_2 = np.logical_and(image[:-1, :, :] == label2, image[1:, :, :] == label1)
+    # np.argwhere(hpairs) - counts each pair which is in contact
+
+    contact_voxels = np.count_nonzero(x_contact_1) + np.count_nonzero(x_contact_2) + np.count_nonzero(
+            y_contact_1) + np.count_nonzero(y_contact_2) + np.count_nonzero(z_contact_1) + np.count_nonzero(z_contact_2)
+
+    return contact_voxels
