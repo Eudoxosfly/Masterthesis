@@ -9,7 +9,6 @@ import skimage.io
 import skimage.io
 from magicgui import magicgui
 from napari.types import ImageData, LabelsData
-from skimage.filters import threshold_multiotsu
 from tqdm import tqdm
 
 
@@ -19,20 +18,25 @@ from tqdm import tqdm
 ## Classes
 @dataclass(kw_only=True)
 class SegmentationSettings:
-    otsu_sigma: float = 0.6
+    air_mask_sigma: float = 0.6
+    air_n_erosions: int = 2
     particle_mask_sigma: float = 0.1
     particle_n_erosions: int = 2
     particle_enlarge_radius: int = 1
     smooth_labels_radius: int = 2
+    contrast_min_percentile: int = 0
+    contrast_max_percentile: int = 100
 
     def __str__(self):
         return (
-                "Segmentation settings:" +
-                "\n Otsu thresholding: Gaussian smoothing sigma: {:.2f}".format(self.otsu_sigma) +
-                "\n Particle mask: Gaussian smoothing sigma: {:.2f}".format(self.particle_mask_sigma) +
-                "\n Particle mask: Erosion iterations: {}".format(self.particle_n_erosions) +
-                "\n Particle mask: Dilation radius: {}".format(self.particle_enlarge_radius) +
-                "\n Mask postprocessing: Smoothing radius: {}".format(self.smooth_labels_radius)
+                "air_mask_simga = {}".format(self.air_mask_sigma) +
+                "\nair_n_erosions = {}".format(self.air_n_erosions) +
+                "\nparticle_mask_sigma = {}".format(self.particle_mask_sigma) +
+                "\nparticle_n_erosions = {}".format(self.particle_n_erosions) +
+                "\nparticle_enlarge_radius = {}".format(self.particle_enlarge_radius) +
+                "\nsmooth_labels_radius = {}".format(self.smooth_labels_radius) +
+                "\ncontrast_min_percentile = {}".format(self.contrast_min_percentile) +
+                "\ncontrast_max_percentile = {}".format(self.contrast_max_percentile)
         )
 
 
@@ -71,9 +75,9 @@ def load_stack(path: str,
     imgs = skimage.io.imread_collection(files[image_range[0]:image_range[1]])
     scan = np.array(imgs)
     logging and print(
-        "Loaded stack with shape {} and a size of {:.2f} GB in {:.2f} s.".format(scan.shape,
-                                                                                 scan.nbytes / 1e9,
-                                                                                 time.time() - start))
+            "Loaded stack with shape {} and a size of {:.2f} GB in {:.2f} s.".format(scan.shape,
+                                                                                     scan.nbytes / 1e9,
+                                                                                     time.time() - start))
     return scan
 
 
@@ -136,8 +140,7 @@ def divide_scan(scan, size_gb: float = 1):
 
 
 def particle_segmentation(im: np.ndarray[np.uint16],
-                          settings: SegmentationSettings = SegmentationSettings,
-                          low_memory_mode: float = 1) -> LabelsData | np.ndarray[np.int32]:
+                          settings: SegmentationSettings = SegmentationSettings) -> LabelsData | np.ndarray[np.int32]:
     """Segment particles in a 3D image using a combination of gaussian blur, otsu thresholding, and morphological operations.
 
     If low_memory_mode==True, the function will not apply erosion and subsequent masked voronoi labeling to the mask.
@@ -160,83 +163,80 @@ def particle_segmentation(im: np.ndarray[np.uint16],
     n_erosions = settings.particle_n_erosions
     dilation_radius = settings.particle_enlarge_radius
 
-    if low_memory_mode:
-        smoothed_gpu = cle.create_like(im, dtype=np.float32)
-        mask_gpu = cle.create_like(im, dtype=np.uint32)
+    # allocate memory on the gpu
+    smoothed_gpu = cle.create_like(im, dtype=np.float32)
+    mask_gpu = cle.create_like(im, dtype=np.uint16)
 
-        # apply gaussian blur and otsu threshold
-        cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
-        cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
-        del smoothed_gpu
+    # apply gaussian blur and otsu threshold
+    cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
+    cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
+    del smoothed_gpu
 
-        cle.dilate_labels(mask_gpu, output_image=mask_gpu, radius=dilation_radius)
-        cle.erode_connected_labels(mask_gpu, output_image=mask_gpu, radius=1)
+    # apply morphological operations
+    original_mask = cle.copy(mask_gpu)
+    for _ in range(n_erosions):
+        cle.erode_labels(mask_gpu, output_image=mask_gpu, radius=1)
+    cle.masked_voronoi_labeling(mask_gpu, output_image=mask_gpu, mask=original_mask)
+    del original_mask
+    cle.dilate_labels(mask_gpu, output_image=mask_gpu, radius=dilation_radius)
+    cle.erode_connected_labels(mask_gpu, output_image=mask_gpu, radius=1)
 
-        mask = cle.pull(mask_gpu)
-        del mask_gpu
+    mask = cle.pull(mask_gpu)
+    del mask_gpu
 
-        return mask
-
-    else:
-        # allocate memory on the gpu
-        smoothed_gpu = cle.create_like(im, dtype=np.float32)
-        mask_gpu = cle.create_like(im, dtype=np.uint16)
-
-        # apply gaussian blur and otsu threshold
-        cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
-        cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
-        del smoothed_gpu
-
-        # apply morphological operations
-        original_mask = cle.copy(mask_gpu)
-        for _ in range(n_erosions):
-            cle.erode_labels(mask_gpu, output_image=mask_gpu, radius=1)
-        cle.masked_voronoi_labeling(mask_gpu, output_image=mask_gpu, mask=original_mask)
-        del original_mask
-        cle.dilate_labels(mask_gpu, output_image=mask_gpu, radius=dilation_radius)
-        cle.erode_connected_labels(mask_gpu, output_image=mask_gpu, radius=1)
-
-        mask = cle.pull(mask_gpu)
-        del mask_gpu
-
-        return mask
+    return mask
 
 
-def otsu_mask(scan: np.ndarray[np.uint32],
-              settings: SegmentationSettings = SegmentationSettings()) -> np.ndarray[np.uint8]:
-    """Segment a 3D image using a combination of gaussian blur and otsu thresholding into three classes.
+def adjust_contrast(im: np.ndarray[np.uint16],
+                    min_percentile: int = 0,
+                    max_percentile: int = 100) -> np.ndarray[np.uint16]:
+    p1, p2 = np.percentile(im, (min_percentile, max_percentile))
+    img_rescale = skimage.exposure.rescale_intensity(im, in_range=(p1, p2))
+    return img_rescale
+
+
+def air_segmentation(scan: np.ndarray[np.uint16],
+                     settings: SegmentationSettings = SegmentationSettings()) -> np.ndarray[np.uint8]:
+    """Segment the air in a 3D image using a combination of gaussian blur and otsu thresholding.
 
     Args:
         scan (ImageData): 3D image data as a np.ndarray.
-        sigma (float): Sigma for the gaussian blur before thresholding.
+        settings (SegmentationSettings): Segmentation settings.
 
     Returns:
-        np.ndarray: Mask with three classes: 1 for air, 2 for polymer, and 3 for particles."""
+        np.ndarray: Binary mask with the air labeled as 1 and the rest as 0."""
+    sigma = settings.air_mask_sigma
+    n_erosions = settings.air_n_erosions
+    min_p = settings.contrast_min_percentile
+    max_p = settings.contrast_max_percentile
 
-    # smoothing on GPU
-    sigma = settings.otsu_sigma
+    im = adjust_contrast(scan, min_p, max_p)
 
-    scan_gpu = cle.push(scan)
-    smoothed_gpu = cle.create_like(scan_gpu, dtype=np.float32)
-    cle.gaussian_blur(scan_gpu, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
-    im = cle.pull(smoothed_gpu)
+    # allocate memory on the gpu
+    smoothed_gpu = cle.create_like(im, dtype=np.float32)
+    mask_gpu = cle.create_like(im, dtype=np.uint16)
+
+    # apply gaussian blur and otsu threshold
+    cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
+    cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
     del smoothed_gpu
 
-    # multi-otsu thresholding
-    th1, th2 = threshold_multiotsu(im, classes=3)
+    # apply morphological operations
+    cle.binary_not(mask_gpu, output_image=mask_gpu)
+    original_mask_gpu = cle.copy(mask_gpu)
+    for _ in range(n_erosions):
+        cle.erode_labels(mask_gpu, output_image=mask_gpu, radius=1)
+    cle.masked_voronoi_labeling(mask_gpu, output_image=mask_gpu, mask=original_mask_gpu)
+    mask = cle.pull(mask_gpu)
+    del mask_gpu, original_mask_gpu
 
-    # create mask
-    mask: np.ndarray[np.uint8] = np.zeros_like(im, dtype=np.uint8)  # type:ignore
-    mask[im <= th1] = 1
-    mask[(im > th1) & (im < th2)] = 2
-    mask[im >= th2] = 3
+    mask = np.where(mask > 0, 1, 0)
 
     return mask
 
 
 def segment_scan(scan: np.ndarray[np.uint16],
-                 settings: SegmentationSettings = SegmentationSettings(),
-                 low_memory_mode: float = True) -> np.ndarray[np.uint8]:
+                 settings: SegmentationSettings = SegmentationSettings()) -> np.ndarray[np.uint8]:
     """Segment a 3D image into air, polymer, and particles using a combined approach of smoothing and otsu thresholding.
 
     Args:
@@ -247,18 +247,18 @@ def segment_scan(scan: np.ndarray[np.uint16],
     Returns:
         np.ndarray: Mask with three classes: 1 for air, 2 for polymer, and 3 for particles.
     """
-    # More precise particle segmentation (with less smoothing)
 
-    fine_particle_mask = particle_segmentation(im=scan,
-                                               settings=settings,
-                                               low_memory_mode=low_memory_mode)
+    # More precise particle segmentation (with less smoothing)
+    particle_mask = particle_segmentation(im=scan, settings=settings)
 
     # Otsu thresholding
-    mask: np.ndarray[np.uint8] = otsu_mask(scan,
-                     settings=settings)
+    air_mask = air_segmentation(scan, settings=settings)
 
     # overwrite particles (and adjacent regions) with better particle mask
-    mask[fine_particle_mask > 0] = 3
+    mask = np.zeros_like(air_mask)
+    mask[air_mask == 0] = 2  # Polymer
+    mask[air_mask == 1] = 1  # Air
+    mask[particle_mask > 0] = 3  # Particles
 
     if settings.smooth_labels_radius > 0:
         mask_gpu = cle.push(mask)
@@ -271,7 +271,8 @@ def segment_scan(scan: np.ndarray[np.uint16],
 
 def adjust_segmentation_parameters_on_subset(scan: ImageData,
                                              subset_size: int = 30,
-                                             low_memory_mode: float = 0.5) -> None:
+                                             autorun: bool = False,
+                                             segment_particles_only: bool = False) -> None:
     """Opens a napari viewer with a subset of the scan and a GUI to adjust the segmentation parameters.
 
     The parameters that can be adjusted are:
@@ -282,9 +283,12 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
 
     """
 
-    @magicgui(auto_call=True)
+    @magicgui(auto_call=autorun)
     def interactive_segmentation(scan: ImageData,
-                                 otsu_sigma: float = 0.6,
+                                 air_mask_sigma: float = 0.6,
+                                 air_n_erosions: int = 2,
+                                 air_min_percentile: int = 0,
+                                 air_max_percentile: int = 8,
                                  particle_mask_sigma: float = 0.1,
                                  particle_n_erosions: int = 2,
                                  particle_enlarge_radius: int = 1,
@@ -301,17 +305,67 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
 
         Returns:
             LabelsData: Mask where air is labeled as 1, polymer as 2, and particles as 3."""
-        settings = SegmentationSettings(otsu_sigma=otsu_sigma,
+        settings = SegmentationSettings(air_mask_sigma=air_mask_sigma,
+                                        air_n_erosions=air_n_erosions,
+                                        contrast_min_percentile=air_min_percentile,
+                                        contrast_max_percentile=air_max_percentile,
                                         particle_mask_sigma=particle_mask_sigma,
                                         particle_n_erosions=particle_n_erosions,
                                         particle_enlarge_radius=particle_enlarge_radius,
                                         smooth_labels_radius=smooth_labels_radius)
 
-        return segment_scan(scan, settings=settings, low_memory_mode=low_memory_mode) # type:ignore
+        # print(settings)
+
+        return segment_scan(scan, settings=settings)  # type:ignore
+
+    @magicgui(auto_call=autorun)
+    def interactive_particle_segmentation(scan: ImageData,
+                                          particle_mask_sigma: float = 0.1,
+                                          particle_n_erosions: int = 2,
+                                          particle_enlarge_radius: int = 1) -> LabelsData:
+        settings = SegmentationSettings(particle_mask_sigma=particle_mask_sigma,
+                                        particle_n_erosions=particle_n_erosions,
+                                        particle_enlarge_radius=particle_enlarge_radius)
+
+        return particle_segmentation(scan, settings=settings) # type:ignore
 
     n_slices, _, _ = scan.shape
     subscan = scan[n_slices // 2 - subset_size // 2:n_slices // 2 + subset_size // 2, :, :]
 
     viewer = napari.Viewer()
     viewer.add_image(subscan)  # type:ignore
-    viewer.window.add_dock_widget(interactive_segmentation, area='right')
+    if segment_particles_only:
+        viewer.window.add_dock_widget(interactive_particle_segmentation, area='right')
+    else:
+        viewer.window.add_dock_widget(interactive_segmentation, area='right')
+
+
+def contact_area(image, label1, label2):
+    """Counts the number of surfaces of label1 in contact with label2.
+
+    Args:
+        image(numpy.ndarray): Array representing image (or image stack).
+        label1(int): Value of label 1
+        label1(int): Value of label 2
+
+    Returns:
+        int: Number of voxels of label1 in contact with label2
+    """
+
+    histogram = skimage.exposure.histogram(image)
+
+    if label1 not in histogram[1] or label2 not in histogram[1]:
+        raise ValueError('One or more labels do not exist. Please input valid labels.')
+
+    x_contact_1 = np.logical_and(image[:, :, :-1] == label1, image[:, :, 1:] == label2)
+    x_contact_2 = np.logical_and(image[:, :, :-1] == label2, image[:, :, 1:] == label1)
+    y_contact_1 = np.logical_and(image[:, :-1, :] == label1, image[:, 1:, :] == label2)
+    y_contact_2 = np.logical_and(image[:, :-1, :] == label2, image[:, 1:, :] == label1)
+    z_contact_1 = np.logical_and(image[:-1, :, :] == label1, image[1:, :, :] == label2)
+    z_contact_2 = np.logical_and(image[:-1, :, :] == label2, image[1:, :, :] == label1)
+    # np.argwhere(hpairs) - counts each pair which is in contact
+
+    contact_voxels = np.count_nonzero(x_contact_1) + np.count_nonzero(x_contact_2) + np.count_nonzero(
+            y_contact_1) + np.count_nonzero(y_contact_2) + np.count_nonzero(z_contact_1) + np.count_nonzero(z_contact_2)
+
+    return contact_voxels
