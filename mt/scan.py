@@ -117,12 +117,16 @@ class Scan:
 
         self._save_segmentation()
         self._save_particle_mask()
+        self._save_volumes()
 
     def _save_segmentation(self):
         np.save(self.path + "segmentation.npy", self._mask)
 
     def _save_particle_mask(self):
         np.save(self.path + "particle_mask.npy", self._particle_mask)
+
+    def _save_volumes(self):
+        np.savetxt(self.path + "volumes.csv", self.particle_statistics["volume_mm3"], delimiter="\n")
 
     # %%
     # Segmentation methods
@@ -189,7 +193,10 @@ class Scan:
         self.mask_analytics = pd.DataFrame(props, index=[0])
 
     def calculate_particle_statistics(self):
-        props = cle.statistics_of_labelled_pixels(self.particle_mask)
+        mask = cle.pull(cle.exclude_labels_on_edges(self.particle_mask))
+        props = cle.statistics_of_labelled_pixels(mask)
+        volumes_voxel, _ = skimage.exposure.histogram(mask)
+        props["volume_mm3"] = volumes_voxel[1:] * self.voxel_size_mm ** 3
         self.particle_statistics = pd.DataFrame(props)
 
     # %%
