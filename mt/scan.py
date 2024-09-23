@@ -72,7 +72,7 @@ class Scan:
         self.mask_analytics: pd.DataFrame | None = None
         self.particle_statistics: pd.DataFrame | None = None
 
-        self.slice_orientation: list = ["y", "z", "x"]
+        self.slice_orientation: str = "y"
         self.slice_range: tuple[int, int] | None = None
         self.discard_ends: bool = discard_ends
         self.segmentation_settings: SegmentationSettings = SegmentationSettings()
@@ -201,26 +201,32 @@ class Scan:
 
     # %%
     # Utility methods
-    def reslice(self,
-                axis: tuple[int, int, int] | str = (1, 0, 2)):
-        NotImplementedError("Reslicing not implemented yet.")
-        if isinstance(axis, str):
-            orientations: dict[str, int] = {"x": 0, "y": 1, "z": 2}
-            np.where(self.slice_orientation == axis)
-        self.stack = np.transpose(self.stack, axis)
+    def reslice(self):
+        self.stack = np.transpose(self.stack, (1, 0, 2))
+        self._stack = np.transpose(self._stack, (1, 0, 2))
+        if self.mask is not None:
+            self.mask = np.transpose(self.mask, (1, 0, 2))
+            self._mask = np.transpose(self._mask, (1, 0, 2))
+        if self.particle_mask is not None:
+            self.particle_mask = np.transpose(self.particle_mask, (1, 0, 2))
+            self._particle_mask = np.transpose(self._particle_mask, (1, 0, 2))
+
 
     def show(self,
              particle_mask_only: bool = False):
         viewer = napari.Viewer()
         viewer.add_image(self.stack, name="Scan")
         if particle_mask_only:
-            if self.particle_mask is None:
-                print("Create particle mask first.")
-            viewer.add_labels(self.particle_mask, name="Particle mask")
+            if self.particle_mask is not None:
+                viewer.add_labels(self.particle_mask, name="Particle mask")
+            else:
+                print("No particle mask found.")
         else:
-            if self.mask is None:
-                print("Create mask first.")
-            viewer.add_labels(self.mask, name="Mask")
+            if self.mask is not None:
+                viewer.add_labels(self.mask, name="Mask")
+            else:
+                print("No mask found.")
+
 
     def _calc_dimensions(self):
         h, w, d = self.stack.shape
