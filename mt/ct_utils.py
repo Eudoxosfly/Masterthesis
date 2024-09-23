@@ -186,6 +186,29 @@ def particle_segmentation(im: np.ndarray[np.uint16],
 
     return mask
 
+def voronoi_tesselation(im: np.ndarray[np.uint16],
+                        settings: SegmentationSettings = SegmentationSettings()) -> np.ndarray[np.uint16]:
+    sigma = settings.particle_mask_sigma
+    n_erosions = settings.particle_n_erosions
+
+    smoothed_gpu = cle.create_like(im, dtype=np.float32)
+    mask_gpu = cle.create_like(im, dtype=np.uint16)
+    v_tess_gpu = cle.create_like(im, dtype=np.uint16)
+
+    # apply gaussian blur and otsu threshold
+    cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
+    cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
+    del smoothed_gpu
+
+    # apply morphological operations
+    for _ in range(n_erosions):
+        cle.erode_labels(mask_gpu, output_image=mask_gpu, radius=1)
+
+    cle.voronoi_labeling(mask_gpu, v_tess_gpu)
+    v_tess = cle.pull(v_tess_gpu)
+    del mask_gpu, v_tess_gpu
+
+    return v_tess
 
 def adjust_contrast(im: np.ndarray[np.uint16],
                     min_percentile: int = 0,

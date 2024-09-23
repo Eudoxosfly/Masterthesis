@@ -30,7 +30,6 @@ class Scan:
 
         Utility:
         show: Show the scan.
-        reslice: Reslice the scan.
 
 
 
@@ -72,7 +71,6 @@ class Scan:
         self.mask_analytics: pd.DataFrame | None = None
         self.particle_statistics: pd.DataFrame | None = None
 
-        self.slice_orientation: str = "y"
         self.slice_range: tuple[int, int] | None = None
         self.discard_ends: bool = discard_ends
         self.segmentation_settings: SegmentationSettings = SegmentationSettings()
@@ -115,18 +113,10 @@ class Scan:
         with open(self.path + "Scan.pkl", "wb") as f:
             pickle.dump(all_attributes, f)
 
+        # make sure to always save in y orientation
         self._save_segmentation()
         self._save_particle_mask()
         self._save_volumes()
-
-    def _save_segmentation(self):
-        np.save(self.path + "segmentation.npy", self._mask)
-
-    def _save_particle_mask(self):
-        np.save(self.path + "particle_mask.npy", self._particle_mask)
-
-    def _save_volumes(self):
-        np.savetxt(self.path + "volumes.csv", self.particle_statistics["volume_mm3"], delimiter="\n")
 
     # %%
     # Segmentation methods
@@ -201,29 +191,33 @@ class Scan:
 
     # %%
     # Utility methods
-    def reslice(self):
-        self.stack = np.transpose(self.stack, (1, 0, 2))
-        self._stack = np.transpose(self._stack, (1, 0, 2))
-        if self.mask is not None:
-            self.mask = np.transpose(self.mask, (1, 0, 2))
-            self._mask = np.transpose(self._mask, (1, 0, 2))
-        if self.particle_mask is not None:
-            self.particle_mask = np.transpose(self.particle_mask, (1, 0, 2))
-            self._particle_mask = np.transpose(self._particle_mask, (1, 0, 2))
-
-
     def show(self,
-             particle_mask_only: bool = False):
+             particle_mask_only: bool = False,
+             axis: str = "y"):
+
+        if axis == "z":
+            stack = np.transpose(self.stack, (1, 0, 2))
+            if self.particle_mask is not None:
+                particle_mask = np.transpose(self.particle_mask, (1, 0, 2))
+            if self.mask is not None:
+                mask = np.transpose(self.mask, (1, 0, 2))
+        else:
+            stack = self.stack
+            if self.particle_mask is not None:
+                particle_mask = self.particle_mask
+            if self.mask is not None:
+                mask = self.mask
+
         viewer = napari.Viewer()
-        viewer.add_image(self.stack, name="Scan")
+        viewer.add_image(stack, name="Scan")
         if particle_mask_only:
             if self.particle_mask is not None:
-                viewer.add_labels(self.particle_mask, name="Particle mask")
+                viewer.add_labels(particle_mask, name="Particle mask")
             else:
                 print("No particle mask found.")
         else:
             if self.mask is not None:
-                viewer.add_labels(self.mask, name="Mask")
+                viewer.add_labels(mask, name="Mask")
             else:
                 print("No mask found.")
 
@@ -286,6 +280,19 @@ class Scan:
             all_attributes = pickle.load(f)
             for key, value in all_attributes.items():
                 setattr(self, key, value)
+
+    def _save_segmentation(self):
+        if self.mask is None:
+            return
+        np.save(self.path + "segmentation.npy", self._mask)
+
+    def _save_particle_mask(self):
+        if self.particle_mask is not None:
+            np.save(self.path + "particle_mask.npy", self._particle_mask)
+
+    def _save_volumes(self):
+        if self.mask_analytics is not None:
+            np.savetxt(self.path + "volumes.csv", self.particle_statistics["volume_mm3"], delimiter="\n")
 
     def __getitem__(self, item):
         return self.stack[item]
