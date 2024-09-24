@@ -124,7 +124,8 @@ def show_in_napari(img, *labels):
     viewer = napari.Viewer()
     viewer.add_image(img)
     for label in labels:
-        viewer.add_labels(label)
+        if label is not None:
+            viewer.add_labels(label)
 
 
 def divide_scan(scan, size_gb: float = 1):
