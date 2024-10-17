@@ -2,8 +2,10 @@ import os.path
 import pickle
 
 import pandas as pd
+import matplotlib.pyplot as plt
 
 from mt.ct_utils import *
+from mt.utils import rand_cmap
 
 
 class Scan:
@@ -209,6 +211,53 @@ class Scan:
         else:
             raise ValueError("Invalid axis. Choose 'y' or 'z'.")
 
+
+    def show_nb(self,
+                mask_type: str = "mask",
+                alpha=0.3,
+                x_size: int = 20):
+        """Utility function to show the scan with the mask overlayed in a Jupyter notebook
+        when napari is not available.
+
+        Args:
+            mask_type (str): Type of mask to show. Choose from 'mask', 'particle_mask' or 'tesselation'.
+            alpha (float): Transparency of the mask overlay.
+            x_size (int): Width modifier for the figure.
+
+            """
+        mask_types: dict = {"mask": self.get_mask(),
+                       "particle_mask": self.get_particle_mask(),
+                       "tesselation": self.get_tesselation()}
+        if mask_type not in mask_types.keys():
+            raise ValueError("Invalid mask type. Choose 'mask', 'particle_mask' or 'tesselation'.")
+        segmentation = mask_types[mask_type]
+
+        y_size = 3*self.get_stack().shape[1]/self.get_stack().shape[2]*x_size + 1
+        fig, axs = plt.subplots(3, 1,figsize=(x_size, y_size))
+        axs[0].imshow(self.get_stack()[0], cmap="gray")
+        axs[0].set_title("First")
+        axs[0].imshow(segmentation[0],
+                      cmap=rand_cmap(label_image=segmentation[0])
+                      if mask_type != "mask" else "hot",
+                      alpha=alpha)
+
+        axs[1].imshow(self.get_stack()[self.__len__()//2], cmap="gray")
+        axs[1].set_title("Middle")
+        axs[1].imshow(segmentation[self.__len__()//2],
+                      cmap=rand_cmap(label_image=segmentation[self.__len__()//2])
+                      if mask_type != "mask" else "hot",
+                      alpha=alpha)
+
+        axs[2].imshow(self.get_stack()[-1], cmap="gray")
+        axs[2].set_title("Last")
+        axs[2].imshow(segmentation[-1],
+                      cmap=rand_cmap(label_image=segmentation[-1])
+                      if mask_type != "mask" else "hot",
+                      alpha=alpha)
+        fig.title(mask_type)
+
+
+
     ## Getter, setter and helper methods
     def get_stack(self):
         if self._stack_exists():
@@ -312,3 +361,6 @@ class Scan:
                 "\n Scanned volume: ({:.1f}x{:.1f}x{:.1f}) mm".format(*self.scan_dimensions_mm) +
                 "\n Volume: {:.2f} mm^3".format(self.V_mm3)
         )
+
+    def __len__(self):
+        return self.get_stack().shape[0]
