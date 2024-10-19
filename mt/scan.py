@@ -2,8 +2,11 @@ import os.path
 import pickle
 
 import pandas as pd
+import matplotlib.pyplot as plt
+from skimage.transform import downscale_local_mean
 
 from mt.ct_utils import *
+from mt.utils import rand_cmap
 
 
 class Scan:
@@ -52,17 +55,17 @@ class Scan:
         discard_ends (bool): Whether to discard the ends of the scan.
         segmentation_settings (SegmentationSettings): Settings for the segmentation.
         """
+    discard_ends_size = 80
 
     def __init__(self, path: str,
-                 discard_ends: bool = True):
+                 discard_ends: bool = True,
+                 downscale: bool = False):
         self.path: str = path
 
-        self.stack: np.ndarray[np.uint16] | None = None
         self._stack: np.ndarray[np.uint16] | None = None
-        self.mask: np.ndarray[np.uint8] | np.ndarray[np.uint32] | None = None
         self._mask: np.ndarray[np.uint8] | np.ndarray[np.uint32] | None = None
-        self.particle_mask: np.ndarray[np.uint8] | np.ndarray[np.uint32] | None = None
         self._particle_mask: np.ndarray[np.uint8] | np.ndarray[np.uint32] | None = None
+        self._tesselation: np.ndarray[np.uint16] | None = None
 
         self.voxel_size_mm: float | None = None
         self.voxel_volume_mm3: float | None = None
@@ -73,8 +76,11 @@ class Scan:
 
         self.slice_range: tuple[int, int] | None = None
         self.discard_ends: bool = discard_ends
+        self.downscale: bool = downscale
         self.segmentation_settings: SegmentationSettings = SegmentationSettings()
         self.particle_segmentation_settings: SegmentationSettings = SegmentationSettings()
+
+        cle.select_device("RTX")
 
     # %%
     # IO methods
@@ -94,7 +100,7 @@ class Scan:
         """
 
         # load the stack
-        if os.path.exists(self.path + "Scan.pkl") and not refresh:
+        if self._scan_object_exists() and not refresh:
             print("Loading pickled Scan object from: {}".format(self.path + "Scan.pkl"))
             self._load_scan_object()
         else:
@@ -102,30 +108,34 @@ class Scan:
             self.voxel_size_mm = read_scan_properties(self.path)
 
         self._load_stack(logging=logging)
-        self._load_mask(logging=logging)
-        self._load_particle_mask(logging=logging)
+        self._np_load("_mask", logging=logging)
+        self._np_load("_particle_mask", logging=logging)
+        self._np_load("_tesselation", logging=logging)
+
+        if self.downscale: self.downscale_stack()
 
     def save(self):
         all_attributes = {}
         for key, value in self.__dict__.items():
-            if key not in ["stack", "mask", "_stack", "_mask", "particle_mask", "_particle_mask"]:
+            if key not in ["_stack", "_mask", "_particle_mask"]:
                 all_attributes[key] = value
         with open(self.path + "Scan.pkl", "wb") as f:
             pickle.dump(all_attributes, f)
 
-        # make sure to always save in y orientation
         self._save_segmentation()
         self._save_particle_mask()
-        self._save_volumes()
+
+    def export_volumes(self):
+        np.savetxt(self.path + "volumes.csv", self.particle_statistics["volume_mm3"], delimiter="\n")
 
     # %%
     # Segmentation methods
     def try_segmentation_settings(self,
-                                  subset_size: int = 200,
+                                  subset_size: int = 100,
                                   autorun: bool = True,
                                   segment_particles_only: bool = False):
 
-        adjust_segmentation_parameters_on_subset(scan=self.stack,
+        adjust_segmentation_parameters_on_subset(scan=self.get_stack(),
                                                  subset_size=subset_size,
                                                  autorun=autorun,
                                                  segment_particles_only=segment_particles_only)
@@ -137,28 +147,23 @@ class Scan:
         self.particle_segmentation_settings = settings
 
     def segment(self):
-        mask = segment_scan(self.stack, settings=self.segmentation_settings)
+        mask = segment_scan(self.get_stack(),
+                            settings=self.segmentation_settings)
 
         # pad mask with zero images to match the original stack
-        if self.slice_range is not None:
-            self._mask = np.pad(mask,
-                                ((self.slice_range[0], self.stack.shape[0] - self.slice_range[1]), (0, 0), (0, 0)))
-        elif self.discard_ends:
-            self._mask = np.pad(mask, ((80, 80), (0, 0), (0, 0)))
-
-        self.mask = mask
+        self._mask = self._pad_mask(mask)
 
     def segment_particles(self):
-        mask = particle_segmentation(self.stack, settings=self.particle_segmentation_settings)
+        mask = particle_segmentation(self.get_stack(),
+                                     settings=self.particle_segmentation_settings)
 
-        if self.slice_range is not None:
-            self._particle_mask = np.pad(mask, (
-                (self.slice_range[0], self.stack.shape[0] - self.slice_range[1]), (0, 0), (0, 0)))
-        elif self.discard_ends:
-            self._particle_mask = np.pad(mask, ((80, 80), (0, 0), (0, 0)))
-        else:
-            self._particle_mask = mask
-        self.particle_mask = mask
+        self._particle_mask = self._pad_mask(mask)
+
+    def voronoi_tesselation(self):
+        v_tess = voronoi_tesselation(self.get_stack(),
+                                     settings=self.particle_segmentation_settings)
+
+        self._tesselation = self._pad_mask(v_tess)
 
     # %%
     # Analysis methods
@@ -174,16 +179,16 @@ class Scan:
 
     def mask_analysis(self):
         props: dict = dict()
-        props["air_Al_contact_area_mm2]"] = contact_area(self.mask, 1, 3) * self.voxel_size_mm ** 2
-        props["polymer_Al_contact_area_mm2"] = contact_area(self.mask, 2, 3) * self.voxel_size_mm ** 2
+        props["air_Al_contact_area_mm2]"] = contact_area(self.get_mask(), 1, 3) * self.voxel_size_mm ** 2
+        props["polymer_Al_contact_area_mm2"] = contact_area(self.get_mask(), 2, 3) * self.voxel_size_mm ** 2
         props["contact_air_Al_percent"] = (props["air_Al_contact_area_mm2]"] / (
-                    props["air_Al_contact_area_mm2]"] + props["polymer_Al_contact_area_mm2"]) * 100)
+                props["air_Al_contact_area_mm2]"] + props["polymer_Al_contact_area_mm2"]) * 100)
         props["total_air_volume_mm3"] = self._mask[self._mask == 1].size * self.voxel_size_mm ** 3
 
         self.mask_analytics = pd.DataFrame(props, index=[0])
 
     def calculate_particle_statistics(self):
-        mask = cle.pull(cle.exclude_labels_on_edges(self.particle_mask))
+        mask = cle.pull(cle.exclude_labels_on_edges(self.get_particle_mask()))
         props = cle.statistics_of_labelled_pixels(mask)
         volumes_voxel, _ = skimage.exposure.histogram(mask)
         props["volume_mm3"] = volumes_voxel[1:] * self.voxel_size_mm ** 3
@@ -192,38 +197,134 @@ class Scan:
     # %%
     # Utility methods
     def show(self,
-             particle_mask_only: bool = False,
              axis: str = "y"):
 
         if axis == "z":
-            stack = np.transpose(self.stack, (1, 0, 2))
-            if self.particle_mask is not None:
-                particle_mask = np.transpose(self.particle_mask, (1, 0, 2))
-            if self.mask is not None:
-                mask = np.transpose(self.mask, (1, 0, 2))
+            t = lambda x: np.transpose(x, (1, 0, 2)) if x is not None else None
+            show_in_napari(t(self.get_stack()),
+                           t(self.get_mask()),
+                           t(self.get_particle_mask()),
+                           t(self.get_tesselation())
+                           )
+
+        elif axis == "y":
+            show_in_napari(self.get_stack(),
+                           self.get_mask(),
+                           self.get_particle_mask(),
+                           self.get_tesselation())
+
         else:
-            stack = self.stack
-            if self.particle_mask is not None:
-                particle_mask = self.particle_mask
-            if self.mask is not None:
-                mask = self.mask
+            raise ValueError("Invalid axis. Choose 'y' or 'z'.")
 
-        viewer = napari.Viewer()
-        viewer.add_image(stack, name="Scan")
-        if particle_mask_only:
-            if self.particle_mask is not None:
-                viewer.add_labels(particle_mask, name="Particle mask")
-            else:
-                print("No particle mask found.")
+
+    def show_nb(self,
+                mask_type: str = "mask",
+                alpha=0.3,
+                x_size: int = 30,
+               axis: str = "z") -> None:
+        """Utility function to show the scan with the mask overlayed in a Jupyter notebook
+        when napari is not available.
+
+        Args:
+            mask_type (str): Type of mask to show. Choose from 'mask', 'particle_mask' or 'tesselation'.
+            alpha (float): Transparency of the mask overlay.
+            x_size (int): Width modifier for the figure.
+        """
+        mask_types: dict = {"mask": self.get_mask(),
+                       "particle_mask": self.get_particle_mask(),
+                       "tesselation": self.get_tesselation()}
+        if mask_type not in mask_types.keys():
+            raise ValueError("Invalid mask type. Choose 'mask', 'particle_mask' or 'tesselation'.")
+        segmentation = mask_types[mask_type]
+        if axis == "y":
+            y_size = 3*self.get_stack().shape[1]/self.get_stack().shape[2]*x_size + 1
+            fig, axs = plt.subplots(3, 1,figsize=(x_size, y_size))
+            axs[0].imshow(self.get_stack()[0], cmap="gray")
+            axs[0].set_title("First")
+            axs[0].imshow(segmentation[0],
+                          cmap=rand_cmap(label_image=segmentation[0])
+                          if mask_type != "mask" else "hot",
+                          alpha=alpha)
+            axs[0].axis("off")
+    
+            axs[1].imshow(self.get_stack()[self.__len__()//2], cmap="gray")
+            axs[1].set_title("Middle")
+            axs[1].imshow(segmentation[self.__len__()//2],
+                          cmap=rand_cmap(label_image=segmentation[self.__len__()//2])
+                          if mask_type != "mask" else "hot",
+                          alpha=alpha)
+    
+            axs[2].imshow(self.get_stack()[-1], cmap="gray")
+            axs[2].set_title("Last")
+            axs[2].imshow(segmentation[-1],
+                          cmap=rand_cmap(label_image=segmentation[-1])
+                          if mask_type != "mask" else "hot",
+                          alpha=alpha)
+        elif axis == "z":
+            mask = np.transpose(segmentation, (1, 0, 2))
+            im = np.transpose(self.get_stack(), (1, 0, 2))
+            n, h, w = im.shape
+            fig, axs = plt.subplots(1, figsize=(x_size, x_size))
+            axs.imshow(im[n//2], cmap="gray")
+            axs.imshow(mask[n//2],
+              cmap=rand_cmap(label_image=segmentation[0])
+              if mask_type != "mask" else "prism",
+              alpha=alpha)
+            axs.axis("off")
+
+
+    def show_hist(self):
+        fig, axs = plt.subplots(1, figsize=(20, 10))
+        axs.hist(self.get_stack().flatten(), bins=200)
+        # logarithmic axis
+        axs.set_yscale("log")
+        # grid
+        axs.grid(True)
+                       
+
+
+
+    ## Getter, setter and helper methods
+    def get_stack(self):
+        if self._stack_exists():
+            return self._apply_slice(self._stack)
+
+    def get_mask(self):
+        if self._mask_exists():
+            return self._apply_slice(self._mask)
+
+    def get_particle_mask(self):
+        if self._particle_mask_exists():
+            return self._apply_slice(self._particle_mask)
+
+    def get_tesselation(self):
+        if self._tesselation_exists():
+            return self._apply_slice(self._tesselation)
+
+    # %%
+    ## Private methods for internal use
+    #
+    # segmentation utility methods
+    def _apply_slice(self, stack):
+        if self.slice_range is not None:
+            return stack[self.slice_range[0]:self.slice_range[1], :, :]
+        elif self.discard_ends:
+            return stack[self.discard_ends_size:-self.discard_ends_size, :, :]
         else:
-            if self.mask is not None:
-                viewer.add_labels(mask, name="Mask")
-            else:
-                print("No mask found.")
+            return stack
+
+    def _pad_mask(self, mask):
+        if self.slice_range is not None:
+            return np.pad(mask,((self.slice_range[0], self.get_stack().shape[0] - self.slice_range[1]), (0, 0), (0, 0)))
+        elif self.discard_ends:
+            return np.pad(mask, ((self.discard_ends_size, self.discard_ends_size), (0, 0), (0, 0)))
+        else:
+            return mask
 
 
+    # calculation methods
     def _calc_dimensions(self):
-        h, w, d = self.stack.shape
+        h, w, d = self.get_stack().shape
         return (h * self.voxel_size_mm,
                 w * self.voxel_size_mm,
                 d * self.voxel_size_mm)
@@ -231,50 +332,20 @@ class Scan:
     def _calc_volume(self) -> float:
         return float(np.prod(self.scan_dimensions_mm))
 
-    def _load_mask(self, logging: bool = False):
-        if not os.path.exists(self.path + "segmentation.npy"):
-            logging and print("No segmentation.npy file found at: {}".format(self.path + "segmentation.npy"))
+    # IO methods
+    def _np_load(self, name, logging: bool = False):
+        if not os.path.exists(self.path + name + ".npy"):
+            logging and print("No {} file found at: {}".format(name, self.path + name + ".npy"))
             return
 
-        self._mask = np.load(self.path + "segmentation.npy")
+        setattr(self, name, np.load(self.path + name + ".npy"))
 
-        if self.slice_range is not None:
-            self.mask = self._mask[self.slice_range[0]:self.slice_range[1], :, :]
-        elif self.discard_ends:
-            self.mask = self._mask[80:-80, :, :]
-        else:
-            self.mask = self._mask
-
-        logging and print("Loaded mask from: {}".format(self.path + "segmentation.npy"))
-
-    def _load_particle_mask(self, logging: bool = False):
-        if not os.path.exists(self.path + "particle_mask.npy"):
-            logging and print("No particle_mask.npy file found at: {}".format(self.path + "particle_mask.npy"))
-            return
-
-        self._particle_mask = np.load(self.path + "particle_mask.npy")
-
-        if self.slice_range is not None:
-            self.particle_mask = self._particle_mask[self.slice_range[0]:self.slice_range[1], :, :]
-        elif self.discard_ends:
-            self.particle_mask = self._particle_mask[80:-80, :, :]
-        else:
-            self.particle_mask = self._particle_mask
-
-        logging and print("Loaded particle mask from: {}".format(self.path + "particle_mask.npy"))
+        logging and print("Loaded {} from: {}".format(name, self.path + name + ".npy"))
 
     def _load_stack(self, logging: bool = False):
         self._stack = load_stack(path=self.path,
                                  folder="Slices",
                                  logging=logging)
-
-        if self.slice_range is not None:
-            self.stack = self._stack[self.slice_range[0]:self.slice_range[1], :, :]
-        elif self.discard_ends:
-            self.stack = self._stack[80:-80, :, :]
-        else:
-            self.stack = self._stack
-
     def _load_scan_object(self):
         with open(self.path + "Scan.pkl", "rb") as f:
             all_attributes = pickle.load(f)
@@ -282,25 +353,45 @@ class Scan:
                 setattr(self, key, value)
 
     def _save_segmentation(self):
-        if self.mask is None:
-            return
-        np.save(self.path + "segmentation.npy", self._mask)
+        if self._mask_exists():
+            np.save(self.path + "segmentation.npy", self._mask)
 
     def _save_particle_mask(self):
-        if self.particle_mask is not None:
+        if self._particle_mask_exists():
             np.save(self.path + "particle_mask.npy", self._particle_mask)
 
-    def _save_volumes(self):
-        if self.mask_analytics is not None:
-            np.savetxt(self.path + "volumes.csv", self.particle_statistics["volume_mm3"], delimiter="\n")
+    def downscale_stack(self):
+        me = lambda x: x if x % 2 == 0 else x - 1
+        n, w, h = self._stack.shape
+        self._stack = downscale_local_mean(self._stack[:me(n), :me(w), :me(h)],
+                                           (2, 2, 2)).astype(np.uint16)
+
+
+    # Methods to check existence of attributes
+    def _stack_exists(self):
+        return self._stack is not None
+    def _mask_exists(self):
+        return self._mask is not None
+
+    def _particle_mask_exists(self):
+        return self._particle_mask is not None
+
+    def _tesselation_exists(self):
+        return self._tesselation is not None
+
+    def _scan_object_exists(self):
+        return os.path.exists(self.path + "Scan.pkl")
 
     def __getitem__(self, item):
-        return self.stack[item]
+        return self.get_stack()[item]
 
     def __str__(self):
         return (
                 "Scan with shape {} and voxel size {:.2f}."
-                .format(self.stack.shape, self.voxel_size_mm) +
+                .format(self.get_stack().shape, self.voxel_size_mm) +
                 "\n Scanned volume: ({:.1f}x{:.1f}x{:.1f}) mm".format(*self.scan_dimensions_mm) +
                 "\n Volume: {:.2f} mm^3".format(self.V_mm3)
         )
+
+    def __len__(self):
+        return self.get_stack().shape[0]
