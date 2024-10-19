@@ -3,6 +3,7 @@ import pickle
 
 import pandas as pd
 import matplotlib.pyplot as plt
+from skimage.transform import downscale_local_mean
 
 from mt.ct_utils import *
 from mt.utils import rand_cmap
@@ -57,7 +58,8 @@ class Scan:
     discard_ends_size = 80
 
     def __init__(self, path: str,
-                 discard_ends: bool = True):
+                 discard_ends: bool = True,
+                 downscale: bool = False):
         self.path: str = path
 
         self._stack: np.ndarray[np.uint16] | None = None
@@ -74,10 +76,11 @@ class Scan:
 
         self.slice_range: tuple[int, int] | None = None
         self.discard_ends: bool = discard_ends
+        self.downscale: bool = downscale
         self.segmentation_settings: SegmentationSettings = SegmentationSettings()
         self.particle_segmentation_settings: SegmentationSettings = SegmentationSettings()
 
-        # cle.select_device("RTX")
+        cle.select_device("RTX")
 
     # %%
     # IO methods
@@ -108,6 +111,8 @@ class Scan:
         self._np_load("_mask", logging=logging)
         self._np_load("_particle_mask", logging=logging)
         self._np_load("_tesselation", logging=logging)
+
+        if self.downscale: self.downscale_stack()
 
     def save(self):
         all_attributes = {}
@@ -263,7 +268,7 @@ class Scan:
             axs.imshow(im[n//2], cmap="gray")
             axs.imshow(mask[n//2],
               cmap=rand_cmap(label_image=segmentation[0])
-              if mask_type != "mask" else "hot",
+              if mask_type != "mask" else "prism",
               alpha=alpha)
             axs.axis("off")
 
@@ -341,7 +346,6 @@ class Scan:
         self._stack = load_stack(path=self.path,
                                  folder="Slices",
                                  logging=logging)
-
     def _load_scan_object(self):
         with open(self.path + "Scan.pkl", "rb") as f:
             all_attributes = pickle.load(f)
@@ -355,6 +359,12 @@ class Scan:
     def _save_particle_mask(self):
         if self._particle_mask_exists():
             np.save(self.path + "particle_mask.npy", self._particle_mask)
+
+    def downscale_stack(self):
+        me = lambda x: x if x % 2 == 0 else x - 1
+        n, w, h = self._stack.shape
+        self._stack = downscale_local_mean(self._stack[:me(n), :me(w), :me(h)],
+                                           (2, 2, 2)).astype(np.uint16)
 
 
     # Methods to check existence of attributes
