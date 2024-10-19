@@ -18,14 +18,12 @@ from tqdm import tqdm
 ## Classes
 @dataclass(kw_only=True)
 class SegmentationSettings:
-    air_mask_sigma: float = 0.6
-    air_n_erosions: int = 2
+    air_mask_sigma: float = 1.6
     particle_mask_sigma: float = 0.1
     particle_n_erosions: int = 2
     particle_enlarge_radius: int = 1
     smooth_labels_radius: int = 2
-    contrast_min_percentile: int = 0
-    contrast_max_percentile: int = 100
+    air_thresh: int = 307
 
     def __str__(self):
         return (
@@ -35,8 +33,7 @@ class SegmentationSettings:
                 "\nparticle_n_erosions = {}".format(self.particle_n_erosions) +
                 "\nparticle_enlarge_radius = {}".format(self.particle_enlarge_radius) +
                 "\nsmooth_labels_radius = {}".format(self.smooth_labels_radius) +
-                "\ncontrast_min_percentile = {}".format(self.contrast_min_percentile) +
-                "\ncontrast_max_percentile = {}".format(self.contrast_max_percentile)
+                "\ncontrast_min_percentile = {}".format(self.air_thresh)
         )
 
 
@@ -211,13 +208,6 @@ def voronoi_tesselation(im: np.ndarray[np.uint16],
 
     return v_tess
 
-def adjust_contrast(im: np.ndarray[np.uint16],
-                    min_percentile: int = 0,
-                    max_percentile: int = 100) -> np.ndarray[np.uint16]:
-    p1, p2 = np.percentile(im, (min_percentile, max_percentile))
-    img_rescale = skimage.exposure.rescale_intensity(im, in_range=(p1, p2))
-    return img_rescale
-
 
 def air_segmentation(scan: np.ndarray[np.uint16],
                      settings: SegmentationSettings = SegmentationSettings()) -> np.ndarray[np.uint8]:
@@ -230,31 +220,17 @@ def air_segmentation(scan: np.ndarray[np.uint16],
     Returns:
         np.ndarray: Binary mask with the air labeled as 1 and the rest as 0."""
     sigma = settings.air_mask_sigma
-    n_erosions = settings.air_n_erosions
-    min_p = settings.contrast_min_percentile
-    max_p = settings.contrast_max_percentile
-
-    im = adjust_contrast(scan, min_p, max_p)
+    air_thresh = settings.air_thresh
 
     # allocate memory on the gpu
-    smoothed_gpu = cle.create_like(im, dtype=np.float32)
-    mask_gpu = cle.create_like(im, dtype=np.uint16)
+    smoothed_gpu = cle.create_like(scan, dtype=np.float32)
+    mask_gpu = cle.create_like(scan, dtype=np.uint16)
 
     # apply gaussian blur and otsu threshold
-    cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
-    cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
-    del smoothed_gpu
-
-    # apply morphological operations
-    cle.binary_not(mask_gpu, output_image=mask_gpu)
-    original_mask_gpu = cle.copy(mask_gpu)
-    for _ in range(n_erosions):
-        cle.erode_labels(mask_gpu, output_image=mask_gpu, radius=1)
-    cle.masked_voronoi_labeling(mask_gpu, output_image=mask_gpu, mask=original_mask_gpu)
+    cle.gaussian_blur(scan, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
+    cle.smaller_constant(smoothed_gpu, output_image=mask_gpu, scalar=air_thresh)
     mask = cle.pull(mask_gpu)
-    del mask_gpu, original_mask_gpu
-
-    mask = np.where(mask > 0, 1, 0)
+    del smoothed_gpu, mask_gpu
 
     return mask
 
@@ -275,8 +251,8 @@ def segment_scan(scan: np.ndarray[np.uint16],
     # More precise particle segmentation (with less smoothing)
     particle_mask = particle_segmentation(im=scan, settings=settings)
 
-    # Otsu thresholding
-    air_mask = air_segmentation(scan, settings=settings)
+    # Manual air thresholding
+    air_mask = air_segmentation(scan=scan, settings=settings)
 
     # overwrite particles (and adjacent regions) with better particle mask
     mask = np.zeros_like(air_mask)
@@ -310,9 +286,7 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
     @magicgui(auto_call=autorun)
     def interactive_segmentation(scan: ImageData,
                                  air_mask_sigma: float = 0.6,
-                                 air_n_erosions: int = 2,
-                                 air_min_percentile: int = 0,
-                                 air_max_percentile: int = 8,
+                                 air_threshhold: int = 10,
                                  particle_mask_sigma: float = 0.1,
                                  particle_n_erosions: int = 2,
                                  particle_enlarge_radius: int = 1,
@@ -330,15 +304,11 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
         Returns:
             LabelsData: Mask where air is labeled as 1, polymer as 2, and particles as 3."""
         settings = SegmentationSettings(air_mask_sigma=air_mask_sigma,
-                                        air_n_erosions=air_n_erosions,
-                                        contrast_min_percentile=air_min_percentile,
-                                        contrast_max_percentile=air_max_percentile,
+                                        air_thresh=air_threshhold*256,
                                         particle_mask_sigma=particle_mask_sigma,
                                         particle_n_erosions=particle_n_erosions,
                                         particle_enlarge_radius=particle_enlarge_radius,
                                         smooth_labels_radius=smooth_labels_radius)
-
-        # print(settings)
 
         return segment_scan(scan, settings=settings)  # type:ignore
 

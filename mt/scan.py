@@ -77,7 +77,7 @@ class Scan:
         self.segmentation_settings: SegmentationSettings = SegmentationSettings()
         self.particle_segmentation_settings: SegmentationSettings = SegmentationSettings()
 
-        cle.select_device("RTX")
+        # cle.select_device("RTX")
 
     # %%
     # IO methods
@@ -126,7 +126,7 @@ class Scan:
     # %%
     # Segmentation methods
     def try_segmentation_settings(self,
-                                  subset_size: int = 200,
+                                  subset_size: int = 100,
                                   autorun: bool = True,
                                   segment_particles_only: bool = False):
 
@@ -195,7 +195,7 @@ class Scan:
              axis: str = "y"):
 
         if axis == "z":
-            t = lambda x: np.transpose(x, (1, 0, 2) if x is not None else None)
+            t = lambda x: np.transpose(x, (1, 0, 2)) if x is not None else None
             show_in_napari(t(self.get_stack()),
                            t(self.get_mask()),
                            t(self.get_particle_mask()),
@@ -215,7 +215,8 @@ class Scan:
     def show_nb(self,
                 mask_type: str = "mask",
                 alpha=0.3,
-                x_size: int = 20):
+                x_size: int = 30,
+               axis: str = "z") -> None:
         """Utility function to show the scan with the mask overlayed in a Jupyter notebook
         when napari is not available.
 
@@ -223,38 +224,58 @@ class Scan:
             mask_type (str): Type of mask to show. Choose from 'mask', 'particle_mask' or 'tesselation'.
             alpha (float): Transparency of the mask overlay.
             x_size (int): Width modifier for the figure.
-
-            """
+        """
         mask_types: dict = {"mask": self.get_mask(),
                        "particle_mask": self.get_particle_mask(),
                        "tesselation": self.get_tesselation()}
         if mask_type not in mask_types.keys():
             raise ValueError("Invalid mask type. Choose 'mask', 'particle_mask' or 'tesselation'.")
         segmentation = mask_types[mask_type]
+        if axis == "y":
+            y_size = 3*self.get_stack().shape[1]/self.get_stack().shape[2]*x_size + 1
+            fig, axs = plt.subplots(3, 1,figsize=(x_size, y_size))
+            axs[0].imshow(self.get_stack()[0], cmap="gray")
+            axs[0].set_title("First")
+            axs[0].imshow(segmentation[0],
+                          cmap=rand_cmap(label_image=segmentation[0])
+                          if mask_type != "mask" else "hot",
+                          alpha=alpha)
+            axs[0].axis("off")
+    
+            axs[1].imshow(self.get_stack()[self.__len__()//2], cmap="gray")
+            axs[1].set_title("Middle")
+            axs[1].imshow(segmentation[self.__len__()//2],
+                          cmap=rand_cmap(label_image=segmentation[self.__len__()//2])
+                          if mask_type != "mask" else "hot",
+                          alpha=alpha)
+    
+            axs[2].imshow(self.get_stack()[-1], cmap="gray")
+            axs[2].set_title("Last")
+            axs[2].imshow(segmentation[-1],
+                          cmap=rand_cmap(label_image=segmentation[-1])
+                          if mask_type != "mask" else "hot",
+                          alpha=alpha)
+        elif axis == "z":
+            mask = np.transpose(segmentation, (1, 0, 2))
+            im = np.transpose(self.get_stack(), (1, 0, 2))
+            n, h, w = im.shape
+            fig, axs = plt.subplots(1, figsize=(x_size, x_size))
+            axs.imshow(im[n//2], cmap="gray")
+            axs.imshow(mask[n//2],
+              cmap=rand_cmap(label_image=segmentation[0])
+              if mask_type != "mask" else "hot",
+              alpha=alpha)
+            axs.axis("off")
 
-        y_size = 3*self.get_stack().shape[1]/self.get_stack().shape[2]*x_size + 1
-        fig, axs = plt.subplots(3, 1,figsize=(x_size, y_size))
-        axs[0].imshow(self.get_stack()[0], cmap="gray")
-        axs[0].set_title("First")
-        axs[0].imshow(segmentation[0],
-                      cmap=rand_cmap(label_image=segmentation[0])
-                      if mask_type != "mask" else "hot",
-                      alpha=alpha)
 
-        axs[1].imshow(self.get_stack()[self.__len__()//2], cmap="gray")
-        axs[1].set_title("Middle")
-        axs[1].imshow(segmentation[self.__len__()//2],
-                      cmap=rand_cmap(label_image=segmentation[self.__len__()//2])
-                      if mask_type != "mask" else "hot",
-                      alpha=alpha)
-
-        axs[2].imshow(self.get_stack()[-1], cmap="gray")
-        axs[2].set_title("Last")
-        axs[2].imshow(segmentation[-1],
-                      cmap=rand_cmap(label_image=segmentation[-1])
-                      if mask_type != "mask" else "hot",
-                      alpha=alpha)
-        fig.title(mask_type)
+    def show_hist(self):
+        fig, axs = plt.subplots(1, figsize=(20, 10))
+        axs.hist(self.get_stack().flatten(), bins=200)
+        # logarithmic axis
+        axs.set_yscale("log")
+        # grid
+        axs.grid(True)
+                       
 
 
 

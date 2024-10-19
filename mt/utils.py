@@ -35,3 +35,10 @@ def rand_cmap(nlabels: int | None=None, label_image: np.ndarray | None=None):
     random_colormap = LinearSegmentedColormap.from_list('new_map', randRGBcolors, N=nlabels)
 
     return random_colormap
+
+def adjust_contrast(im: np.ndarray[np.uint16],
+                    min_percentile: int = 0,
+                    max_percentile: int = 100) -> np.ndarray[np.uint16]:
+    p1, p2 = np.percentile(im, (min_percentile, max_percentile))
+    img_rescale = skimage.exposure.rescale_intensity(im, in_range=(p1, p2))
+    return img_rescale
