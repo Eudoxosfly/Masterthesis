@@ -199,22 +199,13 @@ class Scan:
     def show(self,
              axis: str = "y"):
 
-        if axis == "z":
-            t = lambda x: np.transpose(x, (1, 0, 2)) if x is not None else None
-            show_in_napari(t(self.get_stack()),
-                           t(self.get_mask()),
-                           t(self.get_particle_mask()),
-                           t(self.get_tesselation())
-                           )
-
-        elif axis == "y":
-            show_in_napari(self.get_stack(),
-                           self.get_mask(),
-                           self.get_particle_mask(),
-                           self.get_tesselation())
-
-        else:
-            raise ValueError("Invalid axis. Choose 'y' or 'z'.")
+        order = self._get_transpose_order(axis=axis)
+        t = lambda x: np.transpose(x, order) if x is not None else None
+        show_in_napari(t(self.get_stack()),
+                       t(self.get_mask()),
+                       t(self.get_particle_mask()),
+                       t(self.get_tesselation())
+                       )
 
 
     def show_nb(self,
@@ -237,32 +228,36 @@ class Scan:
             raise ValueError("Invalid mask type. Choose 'mask', 'particle_mask' or 'tesselation'.")
         segmentation = mask_types[mask_type]
         if axis == "y":
-            y_size = 3*self.get_stack().shape[1]/self.get_stack().shape[2]*x_size + 1
+            order = self._get_transpose_order(axis="y")
+            mask = np.transpose(segmentation, order)
+            im = np.transpose(self.get_stack(), order)
+            y_size = 3*im.shape[1]/im.shape[2]*x_size + 1
             fig, axs = plt.subplots(3, 1,figsize=(x_size, y_size))
-            axs[0].imshow(self.get_stack()[0], cmap="gray")
+            axs[0].imshow(im[0], cmap="gray")
             axs[0].set_title("First")
-            axs[0].imshow(segmentation[0],
-                          cmap=rand_cmap(label_image=segmentation[0])
+            axs[0].imshow(mask[0],
+                          cmap=rand_cmap(label_image=mask[0])
                           if mask_type != "mask" else "hot",
                           alpha=alpha)
             axs[0].axis("off")
     
-            axs[1].imshow(self.get_stack()[self.__len__()//2], cmap="gray")
+            axs[1].imshow(im[self.__len__()//2], cmap="gray")
             axs[1].set_title("Middle")
-            axs[1].imshow(segmentation[self.__len__()//2],
-                          cmap=rand_cmap(label_image=segmentation[self.__len__()//2])
+            axs[1].imshow(mask[self.__len__()//2],
+                          cmap=rand_cmap(label_image=mask[self.__len__()//2])
                           if mask_type != "mask" else "hot",
                           alpha=alpha)
     
-            axs[2].imshow(self.get_stack()[-1], cmap="gray")
+            axs[2].imshow(im[-1], cmap="gray")
             axs[2].set_title("Last")
-            axs[2].imshow(segmentation[-1],
-                          cmap=rand_cmap(label_image=segmentation[-1])
+            axs[2].imshow(mask[-1],
+                          cmap=rand_cmap(label_image=mask[-1])
                           if mask_type != "mask" else "hot",
                           alpha=alpha)
         elif axis == "z":
-            mask = np.transpose(segmentation, (1, 0, 2))
-            im = np.transpose(self.get_stack(), (1, 0, 2))
+            order = self._get_transpose_order(axis="z")
+            mask = np.transpose(segmentation, order)
+            im = np.transpose(self.get_stack(), order)
             n, h, w = im.shape
             fig, axs = plt.subplots(1, figsize=(x_size, x_size))
             axs.imshow(im[n//2], cmap="gray")
@@ -381,6 +376,18 @@ class Scan:
 
     def _scan_object_exists(self):
         return os.path.exists(self.path + "Scan.pkl")
+
+    ## general utility methods
+    def _get_transpose_order(self,
+                             axis: str = "z") -> list:
+        if axis not in ["z", "y", "x"]:
+            raise ValueError("Invalid axis. Choose 'z', 'y' or 'x'.")
+        dim = self.get_stack().shape
+        min_idx = int(np.argmin(dim))
+        order = [0, 1, 2]
+        order.remove(min_idx)
+        order.insert({"z": 0, "y": 1, "x": 2}[axis], min_idx)
+        return order
 
     def __getitem__(self, item):
         return self.get_stack()[item]
