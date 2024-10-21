@@ -10,6 +10,7 @@ import skimage.io
 from magicgui import magicgui
 from napari.types import ImageData, LabelsData
 from tqdm import tqdm
+from mt.utils import get_transpose_order
 
 
 # Constants
@@ -19,21 +20,22 @@ from tqdm import tqdm
 @dataclass(kw_only=True)
 class SegmentationSettings:
     air_mask_sigma: float = 1.6
+    air_thresh: int = 307
     particle_mask_sigma: float = 0.1
     particle_n_erosions: int = 2
     particle_enlarge_radius: int = 1
     smooth_labels_radius: int = 2
-    air_thresh: int = 307
+
 
     def __str__(self):
         return (
-                "air_mask_simga = {}".format(self.air_mask_sigma) +
-                "\nair_n_erosions = {}".format(self.air_n_erosions) +
+                "air_mask_sigma = {}".format(self.air_mask_sigma) +
+                "\nair_threshold = {}".format(self.air_thresh) +
                 "\nparticle_mask_sigma = {}".format(self.particle_mask_sigma) +
                 "\nparticle_n_erosions = {}".format(self.particle_n_erosions) +
                 "\nparticle_enlarge_radius = {}".format(self.particle_enlarge_radius) +
-                "\nsmooth_labels_radius = {}".format(self.smooth_labels_radius) +
-                "\ncontrast_min_percentile = {}".format(self.air_thresh)
+                "\nsmooth_labels_radius = {}".format(self.smooth_labels_radius)
+
         )
 
 
@@ -226,10 +228,10 @@ def air_segmentation(scan: np.ndarray[np.uint16],
     smoothed_gpu = cle.create_like(scan, dtype=np.float32)
     mask_gpu = cle.create_like(scan, dtype=np.uint16)
 
-    # apply gaussian blur and otsu threshold
+    # apply gaussian blur and threshold
     cle.gaussian_blur(scan, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
     cle.smaller_constant(smoothed_gpu, output_image=mask_gpu, scalar=air_thresh)
-    mask = cle.pull(mask_gpu)
+    mask = cle.pull(mask_gpu).astype(np.uint8)
     del smoothed_gpu, mask_gpu
 
     return mask
@@ -286,7 +288,7 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
     @magicgui(auto_call=autorun)
     def interactive_segmentation(scan: ImageData,
                                  air_mask_sigma: float = 0.6,
-                                 air_threshhold: int = 10,
+                                 air_threshhold: int = 70,
                                  particle_mask_sigma: float = 0.1,
                                  particle_n_erosions: int = 2,
                                  particle_enlarge_radius: int = 1,
@@ -309,28 +311,32 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
                                         particle_n_erosions=particle_n_erosions,
                                         particle_enlarge_radius=particle_enlarge_radius,
                                         smooth_labels_radius=smooth_labels_radius)
-
         return segment_scan(scan, settings=settings)  # type:ignore
 
     @magicgui(auto_call=autorun)
     def interactive_particle_segmentation(scan: ImageData,
-                                          particle_mask_sigma: float = 0.1,
-                                          particle_n_erosions: int = 2,
+                                          particle_mask_sigma: float = 0.8,
+                                          particle_n_erosions: int = 4,
                                           particle_enlarge_radius: int = 1) -> LabelsData:
         settings = SegmentationSettings(particle_mask_sigma=particle_mask_sigma,
                                         particle_n_erosions=particle_n_erosions,
                                         particle_enlarge_radius=particle_enlarge_radius)
-
         return particle_segmentation(scan, settings=settings) # type:ignore
 
-    n_slices, _, _ = scan.shape
-    subscan = scan[n_slices // 2 - subset_size // 2:n_slices // 2 + subset_size // 2, :, :]
+    if subset_size == -1:
+        subscan = scan
+    else:
+        n_slices, _, _ = scan.shape
+        subscan = scan[n_slices // 2 - subset_size // 2:n_slices // 2 + subset_size // 2, :, :]
 
     viewer = napari.Viewer()
-    viewer.add_image(subscan)  # type:ignore
+      # type:ignore
     if segment_particles_only:
+        subscan = np.transpose(subscan, get_transpose_order(subscan, "z"))
+        viewer.add_image(subscan)
         viewer.window.add_dock_widget(interactive_particle_segmentation, area='right')
     else:
+        viewer.add_image(subscan)
         viewer.window.add_dock_widget(interactive_segmentation, area='right')
 
 

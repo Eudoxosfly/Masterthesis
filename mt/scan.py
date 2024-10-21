@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 from skimage.transform import downscale_local_mean
 
 from mt.ct_utils import *
-from mt.utils import rand_cmap
+from mt.utils import rand_cmap, get_transpose_order
 
 
 class Scan:
@@ -61,6 +61,7 @@ class Scan:
                  discard_ends: bool = True,
                  downscale: bool = False):
         self.path: str = path
+        self.export_path: str = self._set_export_path()
 
         self._stack: np.ndarray[np.uint16] | None = None
         self._mask: np.ndarray[np.uint8] | np.ndarray[np.uint32] | None = None
@@ -77,8 +78,8 @@ class Scan:
         self.slice_range: tuple[int, int] | None = None
         self.discard_ends: bool = discard_ends
         self.downscale: bool = downscale
-        self.segmentation_settings: SegmentationSettings = SegmentationSettings()
-        self.particle_segmentation_settings: SegmentationSettings = SegmentationSettings()
+        self.segmentation_settings: SegmentationSettings | None = None
+        self.particle_segmentation_settings: SegmentationSettings | None = None
 
         cle.select_device("RTX")
 
@@ -101,7 +102,7 @@ class Scan:
 
         # load the stack
         if self._scan_object_exists() and not refresh:
-            print("Loading pickled Scan object from: {}".format(self.path + "Scan.pkl"))
+            print("Loading pickled Scan object from: {}".format(self.export_path + "Scan.pkl"))
             self._load_scan_object()
         else:
             # TODO: read other relevant properties from the files
@@ -119,14 +120,15 @@ class Scan:
         for key, value in self.__dict__.items():
             if key not in ["_stack", "_mask", "_particle_mask"]:
                 all_attributes[key] = value
-        with open(self.path + "Scan.pkl", "wb") as f:
+        with open(self.export_path + "Scan.pkl", "wb") as f:
             pickle.dump(all_attributes, f)
 
-        self._save_segmentation()
+        self._save_mask()
         self._save_particle_mask()
+        self._save_tesselation()
 
     def export_volumes(self):
-        np.savetxt(self.path + "volumes.csv", self.particle_statistics["volume_mm3"], delimiter="\n")
+        np.savetxt(self.export_path + "volumes.csv", self.particle_statistics["volume_mm3"], delimiter="\n")
 
     # %%
     # Segmentation methods
@@ -199,7 +201,7 @@ class Scan:
     def show(self,
              axis: str = "y"):
 
-        order = self._get_transpose_order(axis=axis)
+        order = get_transpose_order(stack = self.get_stack(), axis=axis)
         t = lambda x: np.transpose(x, order) if x is not None else None
         show_in_napari(t(self.get_stack()),
                        t(self.get_mask()),
@@ -228,7 +230,7 @@ class Scan:
             raise ValueError("Invalid mask type. Choose 'mask', 'particle_mask' or 'tesselation'.")
         segmentation = mask_types[mask_type]
         if axis == "y":
-            order = self._get_transpose_order(axis="y")
+            order = get_transpose_order(stack = self.get_stack(), axis="y")
             mask = np.transpose(segmentation, order)
             im = np.transpose(self.get_stack(), order)
             y_size = 3*im.shape[1]/im.shape[2]*x_size + 1
@@ -255,7 +257,7 @@ class Scan:
                           if mask_type != "mask" else "hot",
                           alpha=alpha)
         elif axis == "z":
-            order = self._get_transpose_order(axis="z")
+            order = get_transpose_order(stack = self.get_stack(), axis="z")
             mask = np.transpose(segmentation, order)
             im = np.transpose(self.get_stack(), order)
             n, h, w = im.shape
@@ -328,32 +330,44 @@ class Scan:
         return float(np.prod(self.scan_dimensions_mm))
 
     # IO methods
+    def _set_export_path(self):
+        ex_path = self.path.replace("04_uCT", "06_Results")
+        if not os.path.exists(ex_path):
+            os.makedirs(ex_path)
+        return ex_path
+
+
+
     def _np_load(self, name, logging: bool = False):
-        if not os.path.exists(self.path + name + ".npy"):
-            logging and print("No {} file found at: {}".format(name, self.path + name + ".npy"))
+        if not os.path.exists(self.export_path + name + ".npy"):
+            logging and print("No {} file found at: {}".format(name, self.export_path + name + ".npy"))
             return
 
-        setattr(self, name, np.load(self.path + name + ".npy"))
+        setattr(self, name, np.load(self.export_path + name + ".npy"))
 
-        logging and print("Loaded {} from: {}".format(name, self.path + name + ".npy"))
+        logging and print("Loaded {} from: {}".format(name, self.export_path + name + ".npy"))
 
     def _load_stack(self, logging: bool = False):
         self._stack = load_stack(path=self.path,
                                  folder="Slices",
                                  logging=logging)
     def _load_scan_object(self):
-        with open(self.path + "Scan.pkl", "rb") as f:
+        with open(self.export_path + "Scan.pkl", "rb") as f:
             all_attributes = pickle.load(f)
             for key, value in all_attributes.items():
                 setattr(self, key, value)
 
-    def _save_segmentation(self):
+    def _save_mask(self):
         if self._mask_exists():
-            np.save(self.path + "segmentation.npy", self._mask)
+            np.save(self.export_path + "_mask.npy", self._mask)
 
     def _save_particle_mask(self):
         if self._particle_mask_exists():
-            np.save(self.path + "particle_mask.npy", self._particle_mask)
+            np.save(self.export_path + "_particle_mask.npy", self._particle_mask)
+
+    def _save_tesselation(self):
+        if self._tesselation_exists():
+            np.save(self.export_path + "_tesselation.npy", self._tesselation)
 
     def downscale_stack(self):
         me = lambda x: x if x % 2 == 0 else x - 1
@@ -375,19 +389,7 @@ class Scan:
         return self._tesselation is not None
 
     def _scan_object_exists(self):
-        return os.path.exists(self.path + "Scan.pkl")
-
-    ## general utility methods
-    def _get_transpose_order(self,
-                             axis: str = "z") -> list:
-        if axis not in ["z", "y", "x"]:
-            raise ValueError("Invalid axis. Choose 'z', 'y' or 'x'.")
-        dim = self.get_stack().shape
-        min_idx = int(np.argmin(dim))
-        order = [0, 1, 2]
-        order.remove(min_idx)
-        order.insert({"z": 0, "y": 1, "x": 2}[axis], min_idx)
-        return order
+        return os.path.exists(self.export_path + "Scan.pkl")
 
     def __getitem__(self, item):
         return self.get_stack()[item]

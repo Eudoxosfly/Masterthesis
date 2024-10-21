@@ -42,3 +42,14 @@ def adjust_contrast(im: np.ndarray[np.uint16],
     p1, p2 = np.percentile(im, (min_percentile, max_percentile))
     img_rescale = skimage.exposure.rescale_intensity(im, in_range=(p1, p2))
     return img_rescale
+
+def get_transpose_order(stack: np.ndarray,
+                         axis: str = "z") -> list:
+    if axis not in ["z", "y", "x"]:
+        raise ValueError("Invalid axis. Choose 'z', 'y' or 'x'.")
+    dim = stack.shape
+    min_idx = int(np.argmin(dim))
+    order = [0, 1, 2]
+    order.remove(min_idx)
+    order.insert({"z": 0, "y": 1, "x": 2}[axis], min_idx)
+    return order
