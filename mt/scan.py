@@ -118,7 +118,7 @@ class Scan:
     def save(self):
         all_attributes = {}
         for key, value in self.__dict__.items():
-            if key not in ["_stack", "_mask", "_particle_mask"]:
+            if key not in ["_stack", "_mask", "_particle_mask", "_tesselation"]:
                 all_attributes[key] = value
         with open(self.export_path + "Scan.pkl", "wb") as f:
             pickle.dump(all_attributes, f)
@@ -355,7 +355,8 @@ class Scan:
         with open(self.export_path + "Scan.pkl", "rb") as f:
             all_attributes = pickle.load(f)
             for key, value in all_attributes.items():
-                setattr(self, key, value)
+                if not "path" in key:
+                    setattr(self, key, value)
 
     def _save_mask(self):
         if self._mask_exists():
