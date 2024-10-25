@@ -331,7 +331,7 @@ class Scan:
 
     # IO methods
     def _set_export_path(self):
-        ex_path = self.path.replace("04_uCT", "06_Results")
+        ex_path = self.path.replace("04_uCT", "06_Results/uCT")
         if not os.path.exists(ex_path):
             os.makedirs(ex_path)
         return ex_path

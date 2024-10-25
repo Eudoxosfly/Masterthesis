@@ -352,10 +352,10 @@ def contact_area(image, label1, label2):
         int: Number of voxels of label1 in contact with label2
     """
 
-    histogram = skimage.exposure.histogram(image)
+    _, bins = skimage.exposure.histogram(image)
 
-    if label1 not in histogram[1] or label2 not in histogram[1]:
-        raise ValueError('One or more labels do not exist. Please input valid labels.')
+    if label1 not in bins or label2 not in bins:
+        return 1 # minimal contact area, prevents division by zero
 
     x_contact_1 = np.logical_and(image[:, :, :-1] == label1, image[:, :, 1:] == label2)
     x_contact_2 = np.logical_and(image[:, :, :-1] == label2, image[:, :, 1:] == label1)
