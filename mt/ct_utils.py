@@ -369,3 +369,63 @@ def contact_area(image, label1, label2):
             y_contact_1) + np.count_nonzero(y_contact_2) + np.count_nonzero(z_contact_1) + np.count_nonzero(z_contact_2)
 
     return contact_voxels
+
+
+def get_areas_and_contact(tesselation_2d: np.ndarray,
+                          mask_2d: np.ndarray,
+                          voxel_area: float,
+                          averaging_method: str ="mean",
+                          grid: tuple[int, int]=(3, 3)):
+    """Compute the mean or median of the voronoi cell areas and the contact percentage of Al-PMMA interface in each region.
+
+    Args:
+        tesselation_2d (np.ndarray): 2D voronoi tesselation image.
+        mask_2d (np.ndarray): 2D mask image.
+        voxel_area (float): Area of a voxel in um^2.
+        averaging_method (str): Method to compute the mean or median of the voronoi cell areas.
+        grid (tuple): Grid dimensions to divide the image into regions.
+
+    Returns:
+        tuple: Tuple containing the mean or median of the voronoi cell areas and the contact percentage of Al-PMMA interface in each region.
+    """
+    def divide_into_grid(image) -> list[np.ndarray]:
+        """Convert a 2D image into a grid of regions."""
+        h, w = image.shape
+        cell_h = h // grid[0]
+        cell_w = w // grid[1]
+        regions = []
+        for i in range(grid[0]):
+            for j in range(grid[1]):
+                regions.append(image[i * cell_h:(i + 1) * cell_h, j * cell_w:(j + 1) * cell_w])
+        return regions
+
+    def region_cell_areas(regions) -> np.ndarray:
+        """For each image region compute the median or mean of the voronoi cell size."""
+        areas = []
+        for region in regions:
+            areas_px, _ = skimage.exposure.histogram(region)
+            areas_px = areas_px[areas_px.astype(bool)]  # remove zeros
+            areas.append(np.mean(areas_px) if averaging_method == "mean" else np.median(areas_px))
+        areas_px = np.array(areas).reshape(*grid)
+        areas_um2 = areas_px * voxel_area
+        return areas_um2
+
+    def polymer_contact(regions):
+        """Returns the contact percentage of Al-PMMA interface in each region."""
+        contact_pct = []
+        for region in regions:
+            region = region[..., np.newaxis]
+            air_Al = contact_area(region, 1, 3)
+            poly_Al = contact_area(region, 2, 3)
+            contact_pct.append(poly_Al / (air_Al + poly_Al))
+        contact_pct = np.array(contact_pct).reshape(*grid)
+        return contact_pct
+
+    # get means of voronoi cell areas for regions
+    regions = divide_into_grid(tesselation_2d)
+    areas_um2 = region_cell_areas(regions)
+
+    # get polymer contact percentage for regions
+    regions = divide_into_grid(mask_2d)
+    contact_percent = polymer_contact(regions)
+    return areas_um2, contact_percent

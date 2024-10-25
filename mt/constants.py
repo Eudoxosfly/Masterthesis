@@ -1,3 +1,5 @@
+import matplotlib
+
 ANALYSIS_SPECIMEN = ["BA38",
                      "BA37",
                      "BA36",
@@ -36,3 +38,8 @@ ANALYSIS_SPECIMEN = ["BA38",
                      "AC14",
                      "BA07",
                      "BA05"]
+
+CMAP_MASK = matplotlib.colors.ListedColormap(((1, 1, 0.6),
+                                              (0.2, 1, 1),
+                                              (0.627, 0.627, 0.627)
+                                              ))

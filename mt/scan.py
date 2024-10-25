@@ -1,8 +1,8 @@
 import os.path
 import pickle
 
-import pandas as pd
 import matplotlib.pyplot as plt
+import pandas as pd
 from skimage.transform import downscale_local_mean
 
 from mt.ct_utils import *
@@ -72,8 +72,7 @@ class Scan:
         self.voxel_volume_mm3: float | None = None
         self.scan_dimensions_mm: tuple[float, float, float] | None = None
         self.V_mm3: float | None = None
-        self.mask_analytics: pd.DataFrame | None = None
-        self.particle_statistics: pd.DataFrame | None = None
+        self.analytics: dict = dict()
 
         self.slice_range: tuple[int, int] | None = None
         self.discard_ends: bool = discard_ends
@@ -178,6 +177,21 @@ class Scan:
         self.mask_analysis()
         logging and print("Starting particle analysis.")
         self.calculate_particle_statistics()
+        logging and print("Starting contact area analysis.")
+        self.contact_area_analysis()
+
+    def contact_area_analysis(self, grid: tuple[int, int] = (5, 5)):
+        tess = np.transpose(self.get_tesselation(), get_transpose_order(stack=self.get_stack(), axis="z"))
+        mask = np.transpose(self.get_mask(), get_transpose_order(stack=self.get_stack(), axis="z"))
+        mid_idx = tess.shape[0] // 2
+        mask_mid = mask[mid_idx]
+        tess_mid = tess[mid_idx]
+        cell_area, contact_pct = get_areas_and_contact(tesselation_2d=tess_mid,
+                              mask_2d=mask_mid,
+                              voxel_area=self.voxel_size_mm ** 2,
+                              averaging_method="mean",
+                              grid=grid)
+        self.analytics.update({"2d_cell_area": cell_area, "2d_contact_pct": contact_pct})
 
     def mask_analysis(self):
         props: dict = dict()
@@ -187,21 +201,20 @@ class Scan:
                 props["air_Al_contact_area_mm2]"] + props["polymer_Al_contact_area_mm2"]) * 100)
         props["total_air_volume_mm3"] = self._mask[self._mask == 1].size * self.voxel_size_mm ** 3
 
-        self.mask_analytics = pd.DataFrame(props, index=[0])
-
+        self.analytics.update({"mask_analytics": props})
     def calculate_particle_statistics(self):
         mask = cle.pull(cle.exclude_labels_on_edges(self.get_particle_mask()))
         props = cle.statistics_of_labelled_pixels(mask)
         volumes_voxel, _ = skimage.exposure.histogram(mask)
         props["volume_mm3"] = volumes_voxel[1:] * self.voxel_size_mm ** 3
-        self.particle_statistics = pd.DataFrame(props)
+        self.analytics.update({"particle_statistics": pd.DataFrame(props)})
 
     # %%
     # Utility methods
     def show(self,
              axis: str = "y"):
 
-        order = get_transpose_order(stack = self.get_stack(), axis=axis)
+        order = get_transpose_order(stack=self.get_stack(), axis=axis)
         t = lambda x: np.transpose(x, order) if x is not None else None
         show_in_napari(t(self.get_stack()),
                        t(self.get_mask()),
@@ -209,12 +222,11 @@ class Scan:
                        t(self.get_tesselation())
                        )
 
-
     def show_nb(self,
                 mask_type: str = "mask",
                 alpha=0.3,
                 x_size: int = 30,
-               axis: str = "z") -> None:
+                axis: str = "z") -> None:
         """Utility function to show the scan with the mask overlayed in a Jupyter notebook
         when napari is not available.
 
@@ -224,17 +236,17 @@ class Scan:
             x_size (int): Width modifier for the figure.
         """
         mask_types: dict = {"mask": self.get_mask(),
-                       "particle_mask": self.get_particle_mask(),
-                       "tesselation": self.get_tesselation()}
+                            "particle_mask": self.get_particle_mask(),
+                            "tesselation": self.get_tesselation()}
         if mask_type not in mask_types.keys():
             raise ValueError("Invalid mask type. Choose 'mask', 'particle_mask' or 'tesselation'.")
         segmentation = mask_types[mask_type]
         if axis == "y":
-            order = get_transpose_order(stack = self.get_stack(), axis="y")
+            order = get_transpose_order(stack=self.get_stack(), axis="y")
             mask = np.transpose(segmentation, order)
             im = np.transpose(self.get_stack(), order)
-            y_size = 3*im.shape[1]/im.shape[2]*x_size + 1
-            fig, axs = plt.subplots(3, 1,figsize=(x_size, y_size))
+            y_size = 3 * im.shape[1] / im.shape[2] * x_size + 1
+            fig, axs = plt.subplots(3, 1, figsize=(x_size, y_size))
             axs[0].imshow(im[0], cmap="gray")
             axs[0].set_title("First")
             axs[0].imshow(mask[0],
@@ -242,14 +254,14 @@ class Scan:
                           if mask_type != "mask" else "hot",
                           alpha=alpha)
             axs[0].axis("off")
-    
-            axs[1].imshow(im[self.__len__()//2], cmap="gray")
+
+            axs[1].imshow(im[self.__len__() // 2], cmap="gray")
             axs[1].set_title("Middle")
-            axs[1].imshow(mask[self.__len__()//2],
-                          cmap=rand_cmap(label_image=mask[self.__len__()//2])
+            axs[1].imshow(mask[self.__len__() // 2],
+                          cmap=rand_cmap(label_image=mask[self.__len__() // 2])
                           if mask_type != "mask" else "hot",
                           alpha=alpha)
-    
+
             axs[2].imshow(im[-1], cmap="gray")
             axs[2].set_title("Last")
             axs[2].imshow(mask[-1],
@@ -257,18 +269,17 @@ class Scan:
                           if mask_type != "mask" else "hot",
                           alpha=alpha)
         elif axis == "z":
-            order = get_transpose_order(stack = self.get_stack(), axis="z")
+            order = get_transpose_order(stack=self.get_stack(), axis="z")
             mask = np.transpose(segmentation, order)
             im = np.transpose(self.get_stack(), order)
             n, h, w = im.shape
             fig, axs = plt.subplots(1, figsize=(x_size, x_size))
-            axs.imshow(im[n//2], cmap="gray")
-            axs.imshow(mask[n//2],
-              cmap=rand_cmap(label_image=segmentation[0])
-              if mask_type != "mask" else "prism",
-              alpha=alpha)
+            axs.imshow(im[n // 2], cmap="gray")
+            axs.imshow(mask[n // 2],
+                       cmap=rand_cmap(label_image=segmentation[0])
+                       if mask_type != "mask" else "prism",
+                       alpha=alpha)
             axs.axis("off")
-
 
     def show_hist(self):
         fig, axs = plt.subplots(1, figsize=(20, 10))
@@ -277,9 +288,6 @@ class Scan:
         axs.set_yscale("log")
         # grid
         axs.grid(True)
-                       
-
-
 
     ## Getter, setter and helper methods
     def get_stack(self):
@@ -312,12 +320,12 @@ class Scan:
 
     def _pad_mask(self, mask):
         if self.slice_range is not None:
-            return np.pad(mask,((self.slice_range[0], self.get_stack().shape[0] - self.slice_range[1]), (0, 0), (0, 0)))
+            return np.pad(mask,
+                          ((self.slice_range[0], self.get_stack().shape[0] - self.slice_range[1]), (0, 0), (0, 0)))
         elif self.discard_ends:
             return np.pad(mask, ((self.discard_ends_size, self.discard_ends_size), (0, 0), (0, 0)))
         else:
             return mask
-
 
     # calculation methods
     def _calc_dimensions(self):
@@ -336,8 +344,6 @@ class Scan:
             os.makedirs(ex_path)
         return ex_path
 
-
-
     def _np_load(self, name, logging: bool = False):
         if not os.path.exists(self.export_path + name + ".npy"):
             logging and print("No {} file found at: {}".format(name, self.export_path + name + ".npy"))
@@ -351,6 +357,7 @@ class Scan:
         self._stack = load_stack(path=self.path,
                                  folder="Slices",
                                  logging=logging)
+
     def _load_scan_object(self):
         with open(self.export_path + "Scan.pkl", "rb") as f:
             all_attributes = pickle.load(f)
@@ -376,10 +383,10 @@ class Scan:
         self._stack = downscale_local_mean(self._stack[:me(n), :me(w), :me(h)],
                                            (2, 2, 2)).astype(np.uint16)
 
-
     # Methods to check existence of attributes
     def _stack_exists(self):
         return self._stack is not None
+
     def _mask_exists(self):
         return self._mask is not None
 
