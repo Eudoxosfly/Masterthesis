@@ -1,4 +1,5 @@
 import numpy as np
+import skimage
 
 def print_image_info(image):
     print("\t Shape: {}".format(image.shape))

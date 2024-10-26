@@ -62,6 +62,7 @@ class Scan:
                  downscale: bool = False):
         self.path: str = path
         self.export_path: str = self._set_export_path()
+        self.downscale: bool = downscale
 
         self._stack: np.ndarray[np.uint16] | None = None
         self._mask: np.ndarray[np.uint8] | np.ndarray[np.uint32] | None = None
@@ -76,10 +77,8 @@ class Scan:
 
         self.slice_range: tuple[int, int] | None = None
         self.discard_ends: bool = discard_ends
-        self.downscale: bool = downscale
         self.segmentation_settings: SegmentationSettings | None = None
         self.particle_segmentation_settings: SegmentationSettings | None = None
-
         cle.select_device("RTX")
 
     # %%
@@ -114,20 +113,19 @@ class Scan:
 
         if self.downscale: self.downscale_stack()
 
-    def save(self):
+    def save(self, logging: bool = False):
         all_attributes = {}
         for key, value in self.__dict__.items():
-            if key not in ["_stack", "_mask", "_particle_mask", "_tesselation"]:
+            if key not in ["_stack", "_mask", "_particle_mask", "_tesselation", "path", "export_path", "downscale"]:
                 all_attributes[key] = value
         with open(self.export_path + "Scan.pkl", "wb") as f:
             pickle.dump(all_attributes, f)
-
+        logging and print("Saved Scan object to: {}".format(self.export_path + "Scan.pkl"))
         self._save_mask()
+        logging and print("Saved mask to: {}".format(self.export_path + "_mask.npy"))
         self._save_particle_mask()
+        logging and print("Saved particle mask to: {}".format(self.export_path + "_particle_mask.npy"))
         self._save_tesselation()
-
-    def export_volumes(self):
-        np.savetxt(self.export_path + "volumes.csv", self.particle_statistics["volume_mm3"], delimiter="\n")
 
     # %%
     # Segmentation methods
@@ -362,7 +360,7 @@ class Scan:
         with open(self.export_path + "Scan.pkl", "rb") as f:
             all_attributes = pickle.load(f)
             for key, value in all_attributes.items():
-                if not "path" in key:
+                if key not in ["path", "downscale", "export_path"]:
                     setattr(self, key, value)
 
     def _save_mask(self):
