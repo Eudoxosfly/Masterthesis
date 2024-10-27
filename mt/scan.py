@@ -6,6 +6,7 @@ import pandas as pd
 from skimage.transform import downscale_local_mean
 
 from mt.ct_utils import *
+from mt.visualization import *
 from mt.utils import rand_cmap, get_transpose_order
 
 
@@ -111,7 +112,7 @@ class Scan:
         self._np_load("_particle_mask", logging=logging)
         self._np_load("_tesselation", logging=logging)
 
-        if self.downscale: self.downscale_stack()
+        if self.downscale: self._downscale_stack()
 
     def save(self, logging: bool = False):
         all_attributes = {}
@@ -375,11 +376,12 @@ class Scan:
         if self._tesselation_exists():
             np.save(self.export_path + "_tesselation.npy", self._tesselation)
 
-    def downscale_stack(self):
+    def _downscale_stack(self):
         me = lambda x: x if x % 2 == 0 else x - 1
         n, w, h = self._stack.shape
         self._stack = downscale_local_mean(self._stack[:me(n), :me(w), :me(h)],
                                            (2, 2, 2)).astype(np.uint16)
+        print("Downscaled stack to: {}".format(self._stack.shape))
 
     # Methods to check existence of attributes
     def _stack_exists(self):

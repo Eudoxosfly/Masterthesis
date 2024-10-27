@@ -115,16 +115,17 @@ def save_mask(scan, path):
 
 
 def reslice(scan: np.ndarray,
-            axis: tuple[int, int, int] = (1, 0, 2)) -> np.ndarray:
-    return np.transpose(scan, axis)
+            axis: str = "z") -> np.ndarray:
+    """Reslice a 3D image along the given axis.
 
+    Args:
+        scan (np.ndarray): 3D image data.
+        axis (str): Axis along which to reslice the image.
 
-def show_in_napari(img, *labels):
-    viewer = napari.Viewer()
-    viewer.add_image(img)
-    for label in labels:
-        if label is not None:
-            viewer.add_labels(label)
+    Returns:
+        np.ndarray: Resliced image."""
+    order = get_transpose_order(scan, axis)
+    return np.transpose(scan, order)
 
 
 def divide_scan(scan, size_gb: float = 1):
