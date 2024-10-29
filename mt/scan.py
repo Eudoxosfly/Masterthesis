@@ -1,13 +1,12 @@
 import os.path
 import pickle
 
-import matplotlib.pyplot as plt
 import pandas as pd
 from skimage.transform import downscale_local_mean
 
 from mt.ct_utils import *
-from mt.visualization import *
 from mt.utils import rand_cmap, get_transpose_order
+from mt.visualization import *
 
 
 class Scan:
@@ -128,6 +127,33 @@ class Scan:
         logging and print("Saved particle mask to: {}".format(self.export_path + "_particle_mask.npy"))
         self._save_tesselation()
 
+    def export_image(self,
+                     image_type: str = "stack",
+                     axis: str = "z",
+                     slice_idx: int = None,
+                     region_of_interest: tuple[float, float, float] = None,
+                     aspect_ratio: float = 2):
+        """Save a slice of either scan or mask to a file."""
+        if self.downscale:
+            print("Stack was downscaled, operation cancelled. Please load the full scan.")
+            return
+        image_types = {"stack": self.get_stack(),
+                       "mask": self.get_mask(),
+                       "particle_mask": self.get_particle_mask(),
+                       "tesselation": self.get_tesselation()}
+        if image_type not in image_types.keys():
+            raise ValueError("Invalid image type. Choose 'stack', 'mask', 'particle_mask' or 'tesselation'.")
+        stack = image_types[image_type]
+        stack = reslice(stack, axis)
+        if slice_idx is None:
+            slice_idx = stack.shape[0] // 2
+
+        export_image(im=stack[slice_idx],
+                     file_path=self.export_path + image_type + "_slice_" + str(slice_idx) + ".png",
+                     scale=self.voxel_size_mm,
+                     region_of_interest=region_of_interest,
+                     aspect_ratio=aspect_ratio)
+
     # %%
     # Segmentation methods
     def try_segmentation_settings(self,
@@ -186,10 +212,10 @@ class Scan:
         mask_mid = mask[mid_idx]
         tess_mid = tess[mid_idx]
         cell_area, contact_pct = get_areas_and_contact(tesselation_2d=tess_mid,
-                              mask_2d=mask_mid,
-                              voxel_area=self.voxel_size_mm ** 2,
-                              averaging_method="mean",
-                              grid=grid)
+                                                       mask_2d=mask_mid,
+                                                       voxel_area=self.voxel_size_mm ** 2,
+                                                       averaging_method="mean",
+                                                       grid=grid)
         self.analytics.update({"2d_cell_area": cell_area, "2d_contact_pct": contact_pct})
 
     def mask_analysis(self):
@@ -201,6 +227,7 @@ class Scan:
         props["total_air_volume_mm3"] = self._mask[self._mask == 1].size * self.voxel_size_mm ** 3
 
         self.analytics.update({"mask_analytics": props})
+
     def calculate_particle_statistics(self):
         mask = cle.pull(cle.exclude_labels_on_edges(self.get_particle_mask()))
         props = cle.statistics_of_labelled_pixels(mask)

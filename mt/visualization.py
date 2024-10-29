@@ -77,13 +77,15 @@ def visualize_region_properties(image: np.ndarray,
                   facecolor=[0.878] * 3,
                   framealpha=1)
 
-    im = axs[1].imshow(mean_areas, cmap="RdYlGn_r", vmin=0, vmax=0.05)
+    # im = axs[1].imshow(mean_areas, cmap="RdYlGn_r", vmin=0, vmax=0.05)
+    im = axs[1].imshow(mean_areas, cmap="icefire_r", vmin=0, vmax=0.05)
     axs[1].set_title("Mean area of cells in region in $\mathrm{mm^2}$")
     set_ticks_image(axs[1], h, w, False)
     fig.colorbar(im, ax=axs[1])
     axs[1].set_aspect(h / w)
 
-    im = axs[2].imshow(contact_percent * 100, cmap="RdYlGn", vmin=0, vmax=100)
+    # im = axs[2].imshow(contact_percent * 100, cmap="RdYlGn", vmin=0, vmax=100)
+    im = axs[2].imshow(contact_percent * 100, cmap="icefire", vmin=0, vmax=100)
     axs[2].set_title("Al-PMMA contact percentage")
     set_ticks_image(axs[2], h, w, False)
     fig.colorbar(im, ax=axs[2])

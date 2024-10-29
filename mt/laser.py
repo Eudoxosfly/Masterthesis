@@ -3,6 +3,7 @@ import numpy as np
 
 def get_func_gen_settings(on_time, off_time, passes, focus_distance, legacy=False, verbose=False):
     spot_width, spot_length = get_spot_size(focus_distance)
+    p_laser = 30  # laser power in W
 
     speed = np.round(spot_length / (on_time + off_time) / passes, 1)
     if legacy:
@@ -16,7 +17,7 @@ def get_func_gen_settings(on_time, off_time, passes, focus_distance, legacy=Fals
     total_time_off = total_time_over_spot * (1 - duty_cycle)
     single_time_off = total_time_off / passes
 
-    equivalent_energy = total_time_on * 30 / (spot_width * spot_length)
+    equivalent_energy = total_time_on * p_laser / (spot_width * spot_length)
 
     settings = {"speed": speed, "frequency": frequency, "duty_cycle": duty_cycle,
                 "total_time_over_spot": total_time_over_spot, "passes": passes, "set_on_time": on_time,

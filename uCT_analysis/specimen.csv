@@ -24,8 +24,8 @@ AD33;time constant testing;10x(20 ms on, 40 ms off);B6;good example for evaporat
 AD32;time constant testing;10x(20 ms on, 80 ms off);B6;shows that overlong on time cannot be compensated by longer off time;y
 AD31;time constant testing;10x(10 ms on, 40 ms off);B6;no evaporation, gap not fully closed, melt zone too small, shows too long off time;y
 AD29;time constant testing;10x(5 ms on, 20 ms off);B6;no evaporation, gap not fully closed;y
-AD28;time constant testing;10x(10 ms on, 20 ms off);B6;very few particles, no evaporation, gap not fully closed at the edges, shows melt zone expansion;y
-AD21;time constant testing;10x(10 ms on, 20 ms off);B6;quite a bit of evaporation, super high particle density, looks like evaporation dominantly in high density regions;y
+AD28;time constant testing;standard;B6;very few particles, no evaporation, gap not fully closed at the edges, shows melt zone expansion;y
+AD21;time constant testing;standard;B6;quite a bit of evaporation, super high particle density, looks like evaporation dominantly in high density regions;y
 AD20;time constant testing;7x(49 ms on, 146 ms off);B6;lots of evaporation;y
 AD19;time constant testing;7x(43 ms on, 87 ms off);B6;lots of evaporation, predominantly along scan lines;y
 AD18;time constant testing;3x(35 ms on, 35 ms off);B6;evaporation directly in between particles, but not too much, looks actually quite good;y

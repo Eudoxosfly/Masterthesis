@@ -2,14 +2,17 @@ import os
 import time
 from dataclasses import dataclass
 
+import matplotlib.pyplot as plt
 import napari
 import numpy as np
 import pyclesperanto as cle
 import skimage.io
 import skimage.io
 from magicgui import magicgui
+from matplotlib_scalebar.scalebar import ScaleBar
 from napari.types import ImageData, LabelsData
 from tqdm import tqdm
+
 from mt.utils import get_transpose_order
 
 
@@ -25,7 +28,6 @@ class SegmentationSettings:
     particle_n_erosions: int = 2
     particle_enlarge_radius: int = 1
     smooth_labels_radius: int = 2
-
 
     def __str__(self):
         return (
@@ -187,6 +189,7 @@ def particle_segmentation(im: np.ndarray[np.uint16],
 
     return mask
 
+
 def voronoi_tesselation(im: np.ndarray[np.uint16],
                         settings: SegmentationSettings = SegmentationSettings()) -> np.ndarray[np.uint16]:
     sigma = settings.particle_mask_sigma
@@ -307,7 +310,7 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
         Returns:
             LabelsData: Mask where air is labeled as 1, polymer as 2, and particles as 3."""
         settings = SegmentationSettings(air_mask_sigma=air_mask_sigma,
-                                        air_thresh=air_threshhold*256,
+                                        air_thresh=air_threshhold * 256,
                                         particle_mask_sigma=particle_mask_sigma,
                                         particle_n_erosions=particle_n_erosions,
                                         particle_enlarge_radius=particle_enlarge_radius,
@@ -322,7 +325,7 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
         settings = SegmentationSettings(particle_mask_sigma=particle_mask_sigma,
                                         particle_n_erosions=particle_n_erosions,
                                         particle_enlarge_radius=particle_enlarge_radius)
-        return particle_segmentation(scan, settings=settings) # type:ignore
+        return particle_segmentation(scan, settings=settings)  # type:ignore
 
     if subset_size == -1:
         subscan = scan
@@ -331,7 +334,7 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
         subscan = scan[n_slices // 2 - subset_size // 2:n_slices // 2 + subset_size // 2, :, :]
 
     viewer = napari.Viewer()
-      # type:ignore
+    # type:ignore
     if segment_particles_only:
         subscan = np.transpose(subscan, get_transpose_order(subscan, "z"))
         viewer.add_image(subscan)
@@ -356,7 +359,7 @@ def contact_area(image, label1, label2):
     _, bins = skimage.exposure.histogram(image)
 
     if label1 not in bins or label2 not in bins:
-        return 1 # minimal contact area, prevents division by zero
+        return 1  # minimal contact area, prevents division by zero
 
     x_contact_1 = np.logical_and(image[:, :, :-1] == label1, image[:, :, 1:] == label2)
     x_contact_2 = np.logical_and(image[:, :, :-1] == label2, image[:, :, 1:] == label1)
@@ -375,8 +378,8 @@ def contact_area(image, label1, label2):
 def get_areas_and_contact(tesselation_2d: np.ndarray,
                           mask_2d: np.ndarray,
                           voxel_area: float,
-                          averaging_method: str ="mean",
-                          grid: tuple[int, int]=(3, 3)):
+                          averaging_method: str = "mean",
+                          grid: tuple[int, int] = (3, 3)):
     """Compute the mean or median of the voronoi cell areas and the contact percentage of Al-PMMA interface in each region.
 
     Args:
@@ -389,6 +392,7 @@ def get_areas_and_contact(tesselation_2d: np.ndarray,
     Returns:
         tuple: Tuple containing the mean or median of the voronoi cell areas and the contact percentage of Al-PMMA interface in each region.
     """
+
     def divide_into_grid(image) -> list[np.ndarray]:
         """Convert a 2D image into a grid of regions."""
         h, w = image.shape
@@ -430,3 +434,47 @@ def get_areas_and_contact(tesselation_2d: np.ndarray,
     regions = divide_into_grid(mask_2d)
     contact_percent = polymer_contact(regions)
     return areas_um2, contact_percent
+
+
+def export_image(im: np.ndarray,
+                 scale: float,
+                 file_path: str,
+                 aspect_ratio: float = 1.0,
+                 region_of_interest: tuple[float, float, float] = None):
+    """
+    region_of_interest: tuple[x_0, y_0, width] as a fraction of the image size
+    """
+    h, w = im.shape
+    if region_of_interest is None:
+        region_of_interest = np.s_[0:h, 0:w]
+    else:
+        x_0, y_0, width = region_of_interest
+        width = int(width * w)
+        height = int(width / aspect_ratio)
+        x_0 = int(x_0 * w)
+        y_0 = int(y_0 * h)
+        x_1 = x_0 + width
+        y_1 = y_0 + height
+        if (y_1 > h) or (x_1 > w):
+            raise ValueError("Region of interest is out of bounds: "
+                             + "\nImage: {}x{}".format(h, w)
+                             + "\nx: {} - {}".format(x_0, x_1)
+                             + "\ny: {} - {}".format(y_0, y_1)
+                             + "\ny_1 too high" if y_1 > h else "\nx_1 too high")
+        region_of_interest = np.s_[y_0:y_1, x_0:x_1]
+
+    fig, ax = plt.subplots(1)
+    ax.imshow(im[region_of_interest],
+              cmap='gray')
+    scalebar = ScaleBar(scale,
+                        "mm",
+                        length_fraction=0.1,
+                        fixed_units="mm",
+                        border_pad=0.1,
+                        color="red",
+                        location="lower right",
+                        frameon=False,
+                        height_fraction=0.03)
+    ax.add_artist(scalebar)
+    ax.axis('off')
+    fig.savefig(file_path, dpi=600, bbox_inches='tight', pad_inches=0)
