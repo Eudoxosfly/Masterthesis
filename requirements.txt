@@ -13,5 +13,5 @@ scipy
 seaborn
 jupyter
 pyclesperanto
-napari
+napari[all]
 magicgui

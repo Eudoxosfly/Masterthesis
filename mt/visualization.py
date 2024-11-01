@@ -5,6 +5,7 @@ import numpy as np
 import matplotlib.patches
 from mt.constants import CMAP_MASK
 import napari
+from matplotlib_scalebar.scalebar import ScaleBar
 
 sns.set_context("paper")
 sns.set_theme(font="serif", style="dark", font_scale=1)
@@ -113,3 +114,50 @@ def visualize_region_correlation(areas: np.ndarray,
     axs.set_ylabel("Al-Polymer contact in %")
     axs.set_ylim(-5, 105)
     return fig
+
+def export_image(im: np.ndarray,
+                 scale_mm: float,
+                 file_path: str,
+                 aspect_ratio: float = 1.0,
+                 region_of_interest: tuple[float, float, float] = None,
+                 fixed_length_type: str = "overview"):
+    """
+    region_of_interest: tuple[x_0, y_0, width] as a fraction of the image size
+    """
+    lengths = {"overview": 500, "particles": 100, "single_particle": 25, "detail": 2}
+
+    h, w = im.shape[0], im.shape[1]
+    if region_of_interest is None:
+        region_of_interest = np.s_[0:h, 0:w]
+    else:
+        x_0, y_0, width = region_of_interest
+        width = int(width * w)
+        height = int(width / aspect_ratio)
+        x_0 = int(x_0 * w)
+        y_0 = int(y_0 * h)
+        x_1 = x_0 + width
+        y_1 = y_0 + height
+        if (y_1 > h) or (x_1 > w):
+            raise ValueError("Region of interest is out of bounds: "
+                             + "\nImage: {}x{}".format(h, w)
+                             + "\nx: {} - {}".format(x_0, x_1)
+                             + "\ny: {} - {}".format(y_0, y_1)
+                             + "\ny_1 too high" if y_1 > h else "\nx_1 too high")
+        region_of_interest = np.s_[y_0:y_1, x_0:x_1]
+
+    fig, ax = plt.subplots(1)
+    ax.imshow(im[region_of_interest],
+              cmap='gray')
+    scalebar = ScaleBar(scale_mm,
+                        "mm",
+                        fixed_value=lengths[fixed_length_type],
+                        fixed_units="um",
+                        border_pad=0.1,
+                        color="red",
+                        location="lower right",
+                        frameon=False,
+                        height_fraction=0.03)
+    ax.add_artist(scalebar)
+    ax.axis('off')
+    export_path = file_path.replace(".png", "_scaled.png")
+    fig.savefig(export_path, dpi=600, bbox_inches='tight', pad_inches=0)

@@ -132,7 +132,8 @@ class Scan:
                      axis: str = "z",
                      slice_idx: int = None,
                      region_of_interest: tuple[float, float, float] = None,
-                     aspect_ratio: float = 2):
+                     aspect_ratio: float = 2,
+                     fixed_length_type: str = "overview"):
         """Save a slice of either scan or mask to a file."""
         if self.downscale:
             print("Stack was downscaled, operation cancelled. Please load the full scan.")
@@ -150,7 +151,8 @@ class Scan:
 
         export_image(im=stack[slice_idx],
                      file_path=self.export_path + image_type + "_slice_" + str(slice_idx) + ".png",
-                     scale=self.voxel_size_mm,
+                     scale_mm=self.voxel_size_mm,
+                    fixed_length_type=fixed_length_type,
                      region_of_interest=region_of_interest,
                      aspect_ratio=aspect_ratio)
 
