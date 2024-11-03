@@ -22,7 +22,6 @@ ANALYSIS_SPECIMEN = ["BA38",
                      "AD36",
                      "AD33",
                      "AD32",
-                     "AD31",
                      "AD29",
                      "AD28",
                      "AD21",
@@ -40,10 +39,31 @@ ANALYSIS_SPECIMEN = ["BA38",
                      "BA07",
                      "BA05"]
 
+ANALYSIS_SPECIMEN2 = ["AD12",
+                      "AD14",
+                      "AD16",
+                      "AD18",
+                      "AD19",
+                      "AD20",
+                      "AD21",
+                      "AD28",
+                      "AD29",
+                      "AD32",
+                      "AD36",
+                      "AD38",
+                      "AD40",
+                      "AD42",
+                      "AD43",
+                      "AD45",
+                      "AD63",
+                      "AD64",
+                      "AD66",
+                      "AD67", ]
+
 CMAP_MASK = matplotlib.colors.ListedColormap(((1, 1, 0.6),
                                               (0.2, 1, 1),
                                               (0.627, 0.627, 0.627)
                                               ))
 
-SCALE_FACTOR_2D = 2**2
-SCALE_FACTOR_3D = 2**3
+SCALE_FACTOR_2D = 2 ** 2
+SCALE_FACTOR_3D = 2 ** 3

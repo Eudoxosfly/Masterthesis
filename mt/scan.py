@@ -235,7 +235,7 @@ class Scan:
         props = cle.statistics_of_labelled_pixels(mask)
         volumes_voxel, _ = skimage.exposure.histogram(mask)
         props["volume_mm3"] = volumes_voxel[1:] * self.voxel_size_mm ** 3
-        self.analytics.update({"particle_statistics": pd.DataFrame(props)})
+        self.analytics.update({"particle_statistics": props})
 
     # %%
     # Utility methods

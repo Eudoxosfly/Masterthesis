@@ -23,7 +23,7 @@ from mt.utils import get_transpose_order
 @dataclass(kw_only=True)
 class SegmentationSettings:
     air_mask_sigma: float = 1.6
-    air_thresh: int = 307
+    air_thresh: tuple[int, int] = (0, 0)
     particle_mask_sigma: float = 0.1
     particle_n_erosions: int = 2
     particle_enlarge_radius: int = 1
@@ -165,14 +165,20 @@ def particle_segmentation(im: np.ndarray[np.uint16],
     sigma = settings.particle_mask_sigma
     n_erosions = settings.particle_n_erosions
     dilation_radius = settings.particle_enlarge_radius
+    particle_thresh = 0
 
+    if settings.air_thresh[1] !=0:
+        particle_thresh = settings.air_thresh[1]
     # allocate memory on the gpu
     smoothed_gpu = cle.create_like(im, dtype=np.float32)
     mask_gpu = cle.create_like(im, dtype=np.uint16)
 
     # apply gaussian blur and otsu threshold
     cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
-    cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
+    if particle_thresh != 0:
+        cle.greater_constant(smoothed_gpu, output_image=mask_gpu, scalar=particle_thresh)
+    else:
+        cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
     del smoothed_gpu
 
     # apply morphological operations
@@ -194,6 +200,9 @@ def voronoi_tesselation(im: np.ndarray[np.uint16],
                         settings: SegmentationSettings = SegmentationSettings()) -> np.ndarray[np.uint16]:
     sigma = settings.particle_mask_sigma
     n_erosions = settings.particle_n_erosions
+    particle_thresh = 0
+    if settings.air_thresh[1] !=0:
+        particle_thresh = settings.air_thresh[1]
 
     smoothed_gpu = cle.create_like(im, dtype=np.float32)
     mask_gpu = cle.create_like(im, dtype=np.uint16)
@@ -201,7 +210,10 @@ def voronoi_tesselation(im: np.ndarray[np.uint16],
 
     # apply gaussian blur and otsu threshold
     cle.gaussian_blur(im, output_image=smoothed_gpu, sigma_x=sigma, sigma_y=sigma, sigma_z=sigma)
-    cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
+    if particle_thresh != 0:
+        cle.greater_constant(smoothed_gpu, output_image=mask_gpu, scalar=particle_thresh)
+    else:
+        cle.threshold_otsu(smoothed_gpu, output_image=mask_gpu)
     del smoothed_gpu
 
     # apply morphological operations
@@ -226,7 +238,7 @@ def air_segmentation(scan: np.ndarray[np.uint16],
     Returns:
         np.ndarray: Binary mask with the air labeled as 1 and the rest as 0."""
     sigma = settings.air_mask_sigma
-    air_thresh = settings.air_thresh
+    air_thresh = settings.air_thresh[0]
 
     # allocate memory on the gpu
     smoothed_gpu = cle.create_like(scan, dtype=np.float32)
@@ -293,6 +305,7 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
     def interactive_segmentation(scan: ImageData,
                                  air_mask_sigma: float = 0.6,
                                  air_threshhold: int = 70,
+                                 particle_threshold: int = 150,
                                  particle_mask_sigma: float = 0.1,
                                  particle_n_erosions: int = 2,
                                  particle_enlarge_radius: int = 1,
@@ -310,7 +323,7 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
         Returns:
             LabelsData: Mask where air is labeled as 1, polymer as 2, and particles as 3."""
         settings = SegmentationSettings(air_mask_sigma=air_mask_sigma,
-                                        air_thresh=air_threshhold * 256,
+                                        air_thresh=(air_threshhold*255, particle_threshold*255),
                                         particle_mask_sigma=particle_mask_sigma,
                                         particle_n_erosions=particle_n_erosions,
                                         particle_enlarge_radius=particle_enlarge_radius,
@@ -320,9 +333,11 @@ def adjust_segmentation_parameters_on_subset(scan: ImageData,
     @magicgui(auto_call=autorun)
     def interactive_particle_segmentation(scan: ImageData,
                                           particle_mask_sigma: float = 0.8,
+                                          particle_thresh: int = 150,
                                           particle_n_erosions: int = 4,
                                           particle_enlarge_radius: int = 1) -> LabelsData:
         settings = SegmentationSettings(particle_mask_sigma=particle_mask_sigma,
+                                        air_thresh=(1*255, particle_thresh*255),
                                         particle_n_erosions=particle_n_erosions,
                                         particle_enlarge_radius=particle_enlarge_radius)
         return particle_segmentation(scan, settings=settings)  # type:ignore

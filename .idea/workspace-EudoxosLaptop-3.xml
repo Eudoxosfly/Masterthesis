@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="AutoImportSettings">
+    <option name="autoReloadType" value="SELECTIVE" />
+  </component>
+  <component name="ChangeListManager">
+    <list default="true" id="2d976294-4e47-4ee0-b07b-9477e6b1272b" name="Changes" comment="removed bug where downscale=True was read from Scan.pkl">
+      <change beforePath="$PROJECT_DIR$/mechanical/compressive_shear.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/mechanical/compressive_shear.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mt/laser.py" beforeDir="false" afterPath="$PROJECT_DIR$/mt/laser.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/mt/visualization.py" beforeDir="false" afterPath="$PROJECT_DIR$/mt/visualization.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/uCT_analysis/specimen.csv" beforeDir="false" afterPath="$PROJECT_DIR$/uCT_analysis/specimen.csv" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/uCT_analysis/view.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/uCT_analysis/view.ipynb" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/uCT_analysis/visualization.ipynb" beforeDir="false" afterPath="$PROJECT_DIR$/uCT_analysis/visualization.ipynb" afterDir="false" />
+    </list>
+    <option name="SHOW_DIALOG" value="false" />
+    <option name="HIGHLIGHT_CONFLICTS" value="true" />
+    <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
+    <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Jupyter Notebook" />
+        <option value="Python Script" />
+      </list>
+    </option>
+  </component>
+  <component name="Git.Settings">
+    <favorite-branches>
+      <branch-storage>
+        <map>
+          <entry type="LOCAL">
+            <value>
+              <list>
+                <branch-info repo="$PROJECT_DIR$" source="reorganizing-scan" />
+              </list>
+            </value>
+          </entry>
+        </map>
+      </branch-storage>
+    </favorite-branches>
+    <option name="RECENT_BRANCH_BY_REPOSITORY">
+      <map>
+        <entry key="$PROJECT_DIR$" value="local_mean" />
+      </map>
+    </option>
+    <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
+  </component>
+  <component name="GitHubPullRequestSearchHistory">{
+  &quot;lastFilter&quot;: {
+    &quot;state&quot;: &quot;OPEN&quot;,
+    &quot;assignee&quot;: &quot;Eudoxosfly&quot;
+  }
+}</component>
+  <component name="GithubPullRequestsUISettings">{
+  &quot;selectedUrlAndAccountId&quot;: {
+    &quot;url&quot;: &quot;https://github.com/Eudoxosfly/Masterthesis.git&quot;,
+    &quot;accountId&quot;: &quot;92cb6788-7b5a-412f-b505-b1bad8845815&quot;
+  }
+}</component>
+  <component name="MigrationScriptOptions">
+    <option name="ignoreImplicitObjects" value="true" />
+    <option name="ignoreSourceCode" value="false" />
+  </component>
+  <component name="ProjectColorInfo">{
+  &quot;associatedIndex&quot;: 2
+}</component>
+  <component name="ProjectId" id="2gPnUAV6AquAuBtQf7PJXMsmHHO" />
+  <component name="ProjectLevelVcsManager" settingsEditedManually="true" />
+  <component name="ProjectViewState">
+    <option name="hideEmptyMiddlePackages" value="true" />
+    <option name="showLibraryContents" value="true" />
+  </component>
+  <component name="PropertiesComponent">{
+  &quot;keyToString&quot;: {
+    &quot;Python.batch_adjustContrast.executor&quot;: &quot;Debug&quot;,
+    &quot;Python.test.executor&quot;: &quot;Run&quot;,
+    &quot;RunOnceActivity.OpenProjectViewOnStart&quot;: &quot;true&quot;,
+    &quot;RunOnceActivity.ShowReadmeOnStart&quot;: &quot;true&quot;,
+    &quot;SHARE_PROJECT_CONFIGURATION_FILES&quot;: &quot;true&quot;,
+    &quot;WebServerToolWindowFactoryState&quot;: &quot;false&quot;,
+    &quot;database.data.extractors.current.export.id&quot;: &quot;Semicolon-separated_id&quot;,
+    &quot;database.data.extractors.current.id&quot;: &quot;Semicolon-separated_id&quot;,
+    &quot;git-widget-placeholder&quot;: &quot;main&quot;,
+    &quot;ignore.virus.scanning.warn.message&quot;: &quot;true&quot;,
+    &quot;last_opened_file_path&quot;: &quot;C:/Users/malte/OneDrive/Documents/StudiumDocs/MatSci_Ma/Thesis/03_Computation/uCT_analysis&quot;,
+    &quot;settings.editor.selected.configurable&quot;: &quot;com.jetbrains.python.configuration.PyActiveSdkModuleConfigurable&quot;
+  },
+  &quot;keyToStringList&quot;: {
+    &quot;DatabaseDriversLRU&quot;: [
+      &quot;duckdb&quot;,
+      &quot;sqlite&quot;
+    ]
+  }
+}</component>
+  <component name="RecentsManager">
+    <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\malte\OneDrive\Documents\StudiumDocs\MatSci_Ma\Thesis\03_Computation\uCT_analysis" />
+      <recent name="C:\Users\malte\OneDrive\Documents\StudiumDocs\MatSci_Ma\Thesis\Computation\Data" />
+    </key>
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\malte\OneDrive\Documents\StudiumDocs\MatSci_Ma\Thesis\03_Computation" />
+      <recent name="C:\Users\malte\OneDrive\Documents\StudiumDocs\MatSci_Ma\Thesis\03_Computation\uCT_analysis" />
+      <recent name="C:\Users\malte\OneDrive\Documents\StudiumDocs\MatSci_Ma\Thesis\03_Computation\mt" />
+      <recent name="C:\Users\malte\OneDrive\Documents\StudiumDocs\MatSci_Ma\Thesis\03_Computation\LM_images\LM_images_postprocessing" />
+      <recent name="C:\Users\malte\OneDrive\Documents\StudiumDocs\MatSci_Ma\Thesis\03_Computation\Calculations\LM_images\LM_images_postprocessing" />
+    </key>
+  </component>
+  <component name="RunManager">
+    <configuration name="batch_adjustContrast" type="PythonConfigurationType" factoryName="Python" temporary="true" nameIsGenerated="true">
+      <module name="Computation" />
+      <option name="ENV_FILES" value="" />
+      <option name="INTERPRETER_OPTIONS" value="" />
+      <option name="PARENT_ENVS" value="true" />
+      <envs>
+        <env name="PYTHONUNBUFFERED" value="1" />
+      </envs>
+      <option name="SDK_HOME" value="" />
+      <option name="WORKING_DIRECTORY" value="$PROJECT_DIR$/tools" />
+      <option name="IS_MODULE_SDK" value="true" />
+      <option name="ADD_CONTENT_ROOTS" value="true" />
+      <option name="ADD_SOURCE_ROOTS" value="true" />
+      <option name="SCRIPT_NAME" value="C:\Users\malte\OneDrive\Documents\StudiumDocs\MatSci_Ma\Thesis\03_Computation\Calculations\uCT_analysis\batch_adjustContrast.py" />
+      <option name="PARAMETERS" value="" />
+      <option name="SHOW_COMMAND_LINE" value="false" />
+      <option name="EMULATE_TERMINAL" value="false" />
+      <option name="MODULE_MODE" value="false" />
+      <option name="REDIRECT_INPUT" value="false" />
+      <option name="INPUT_FILE" value="" />
+      <method v="2" />
+    </configuration>
+    <recent_temporary>
+      <list>
+        <item itemvalue="Python.batch_adjustContrast" />
+      </list>
+    </recent_temporary>
+  </component>
+  <component name="SharedIndexes">
+    <attachedChunks>
+      <set>
+        <option value="bundled-python-sdk-80a6976e5986-7ba1f540c4e9-com.jetbrains.pycharm.ds.sharedIndexes.bundled-DS-242.22855.78" />
+      </set>
+    </attachedChunks>
+  </component>
+  <component name="SpellCheckerSettings" RuntimeDictionaries="0" Folders="0" CustomDictionaries="0" DefaultDictionary="application-level" UseSingleDictionary="true" transferred="true" />
+  <component name="Vcs.Log.Tabs.Properties">
+    <option name="TAB_STATES">
+      <map>
+        <entry key="MAIN">
+          <value>
+            <State />
+          </value>
+        </entry>
+      </map>
+    </option>
+  </component>
+  <component name="VcsManagerConfiguration">
+    <MESSAGE value="Split Scan to fit in memory" />
+    <MESSAGE value="Split utils into dedicated files" />
+    <MESSAGE value="updated ct_utils with 2 class air segmentation" />
+    <MESSAGE value="restructured scan class" />
+    <MESSAGE value="deleted obsolete files" />
+    <MESSAGE value="added show_nb function and workflow for nesh" />
+    <MESSAGE value="added thresholding for air segmentation" />
+    <MESSAGE value="generalized the axis choice during image display" />
+    <MESSAGE value="created segmentation workflow" />
+    <MESSAGE value="improved mechanical test workflow" />
+    <MESSAGE value="improved contact area computation" />
+    <MESSAGE value="visualization for contact area" />
+    <MESSAGE value="removed bug where downscale=True was read from Scan.pkl" />
+    <option name="LAST_COMMIT_MESSAGE" value="removed bug where downscale=True was read from Scan.pkl" />
+  </component>
+</project>
