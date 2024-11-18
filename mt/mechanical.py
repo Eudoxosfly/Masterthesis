@@ -89,9 +89,9 @@ def load_set(path: str) -> list:
 def plot_set(data: list,
              show_raw: bool = True) -> None:
     sns.set_context("paper")
-    sns.set_theme(font="serif", style="whitegrid")
+    sns.set_theme(font="serif", style="whitegrid", font_scale=2)
     path = data[0].path
-    fig, axs = plt.subplots(1, figsize=(12, 6))
+    fig, axs = plt.subplots(1, figsize=(12, 8))
     if show_raw:
         for d in data:
             axs.plot(d.distance_raw,
@@ -115,4 +115,4 @@ def plot_set(data: list,
     plt.xlabel("Distance [mm]")
     plt.ylabel("Force [N]")
     plt.title(path.split("/")[-2])
-    if not show_raw: plt.savefig(path.replace("02_Data", "06_Results") + "line_plots.svg")
+    plt.savefig(path.replace("02_Data", "06_Results") + "line_plots.png")
