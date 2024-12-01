@@ -10,6 +10,12 @@ import seaborn as sns
 
 @dataclass(kw_only=True)
 class ShearData:
+    """Class to store and process shear test data.
+
+    Methods:
+        load: load the data from a csv file.
+        _calculate: calculate the breaking point and the data before it.
+        _break_idx: find the index of the breaking point."""
     path: str | None = None
 
     name: str | None = None
@@ -57,6 +63,18 @@ class ShearData:
 
 
 def to_df(*data: list[ShearData]) -> pd.DataFrame:
+    """Convert a list of ShearData objects to a pandas DataFrame.
+
+    Args:
+        data: list of ShearData objects.
+
+    Returns:
+        pandas DataFrame with the following columns:
+            - name: name of the data file
+            - Test type: type of test (tensile, fourPoint, threePoint)
+            - Structured: whether the particles were structured or not
+            - Force at break in N: force at the breaking point
+            - Distance at break in mm: distance at the breaking point."""
     datas = []
     for d in data:
         for elem in d:
@@ -72,6 +90,13 @@ def to_df(*data: list[ShearData]) -> pd.DataFrame:
 
 
 def load_set(path: str) -> list:
+    """Load all data files from a folder.
+
+    Args:
+        path: path to the folder containing the data files.
+
+    Returns:
+        list of ShearData objects."""
     def get_files(path: str) -> list:
         files = os.listdir(path)
         files = [f for f in files if f.endswith(".txt")]
@@ -88,6 +113,11 @@ def load_set(path: str) -> list:
 
 def plot_set(data: list,
              show_raw: bool = True) -> None:
+    """Plot all shear data objects in a list, colored by particle structuring.
+
+    Args:
+        data: list of ShearData objects
+        show_raw: if True, plot the full curve with a marker displaying the calculated break point."""
     sns.set_context("paper")
     sns.set_theme(font="serif", style="whitegrid", font_scale=2)
     path = data[0].path

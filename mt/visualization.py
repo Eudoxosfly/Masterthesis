@@ -64,12 +64,9 @@ def visualize_region_properties(image: np.ndarray,
     set_ticks_image(axs[0], h, w, True)
     axs[0].set_title("X-Y Slice")
     legend_elements = [
-        # matplotlib.patches.Patch(facecolor=[0.878] * 3, label="X-Y Slice: ", edgecolor=[0.878] * 3),
         matplotlib.patches.Patch(facecolor=cmap(0), label="Air"),
         matplotlib.patches.Patch(facecolor=cmap(1), label="Polymer"),
         matplotlib.patches.Patch(facecolor=cmap(2), label="Al")]
-    # box = axs[0].get_position()
-    # axs[0].set_position([box.x0, box.y0-0.1, box.width, box.height])
 
     axs[0].legend(handles=legend_elements,
                   loc='upper center',
@@ -103,7 +100,12 @@ def show_in_napari(img, *labels):
 
 
 def visualize_region_correlation(areas: np.ndarray,
-                                 contact: np.ndarray,):
+                                 contact: np.ndarray) -> plt.Figure:
+    """Visualize the correlation between mean cell area and contact percentage.
+
+    Args:
+        areas (np.ndarray): 2D array of the mean cell areas.
+        contact (np.ndarray): 2D array of the contact percentage."""
     sns.set_context("paper")
     sns.set_theme(font="serif", style="whitegrid", font_scale=1.5)
     fig, axs = plt.subplots(1, figsize=(10, 5))
@@ -121,8 +123,15 @@ def export_image(im: np.ndarray,
                  aspect_ratio: float = 1.0,
                  region_of_interest: tuple[float, float, float] = None,
                  fixed_length_type: str = "overview"):
-    """
-    region_of_interest: tuple[x_0, y_0, width] as a fraction of the image size
+    """Exports an image with a scalebar.
+
+    Args:
+        im (np.ndarray): Image to export.
+        scale_mm (float): Scale of the image in mm.
+        file_path (str): File path to export the image to.
+        aspect_ratio (float, optional): Aspect ratio of the region of interest. Defaults to 1.0.
+        region_of_interest (tuple[float, float, float], optional): Region of interest. Defaults to the entire image.
+        fixed_length_type (str, optional): Length of the scalebar. Defaults to "overview".
     """
     lengths = {"overview": 500, "particles": 100, "single_particle": 25, "detail": 2}
 

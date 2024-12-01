@@ -2,6 +2,7 @@ import numpy as np
 import skimage
 
 def print_image_info(image):
+    """Prints basic information about an image."""
     print("\t Shape: {}".format(image.shape))
     print("\t Range: {}-{}".format(image.min(), image.max()))
     print("\t Dtype: {}".format(image.dtype))
@@ -9,7 +10,8 @@ def print_image_info(image):
 
 
 # Generate random colormap
-def rand_cmap(nlabels: int | None=None, label_image: np.ndarray | None=None):
+def rand_cmap(nlabels: int | None=None,
+              label_image: np.ndarray | None=None):
     """
     Creates a random colormap to be used together with matplotlib. Useful for segmentation tasks
     Adapted from delestro: https://github.com/delestro/rand_cmap/blob/master/rand_cmap.py
@@ -40,12 +42,14 @@ def rand_cmap(nlabels: int | None=None, label_image: np.ndarray | None=None):
 def adjust_contrast(im: np.ndarray[np.uint16],
                     min_percentile: int = 0,
                     max_percentile: int = 100) -> np.ndarray[np.uint16]:
+    """Adjusts contrast of an image using percentile values."""
     p1, p2 = np.percentile(im, (min_percentile, max_percentile))
     img_rescale = skimage.exposure.rescale_intensity(im, in_range=(p1, p2))
     return img_rescale
 
 def get_transpose_order(stack: np.ndarray,
                          axis: str = "z") -> list:
+    """Returns the order to transpose a 3D stack to a given axis."""
     if axis not in ["z", "y", "x"]:
         raise ValueError("Invalid axis. Choose 'z', 'y' or 'x'.")
     dim = stack.shape

@@ -12,48 +12,59 @@ from mt.visualization import *
 class Scan:
     """Class for handling uCT scans.
 
+    The Scan class is used to load, process and analyze uCT scans. It provides methods to load the scan and its
+    properties from files, segment the scan into a mask and a particle mask, calculate properties of the scan and
+    the particles, and visualize the scan and the masks. The class also provides methods to save the scan and its
+    properties to files.
+
     Methods:
-        IO:
-        load: Load the scan and properties from the path.
-        save: Save the Scan object to a pickle file.
-        save_mask: Save the mask to the path.
+        ## IO methods
+        load: Load scan and properties from the path.
+        save: Save the scan and its properties to files.
+        export_image: Save a slice of either scan or mask to a file.
 
-        Segmentation:
-        try_segmentation_settings: Try different segmentation settings interactively on a subset of the scan.
+        ## Segmentation methods
+        segment: Segment the scan into a mask.
+        segment_particles: Segment the scan into a particle mask.
+        voronoi_tesselation: Perform a Voronoi tesselation on the particle mask.
+        try_segmentation_settings: Try segmentation settings on a subset of the scan.
         set_segmentation_settings: Set the segmentation settings.
-        segment: Segment the scan.
+        set_particle_segmentation_settings: Set the particle segmentation settings.
 
-        Analysis:
-        calculate_properties: Group method to calculate all properties.
-        calculate_volume: Calculate the volume of the scan.
-        calculate_dimensions: Calculate the dimensions of the scan.
-        calculate_contact_area: Calculate the contact area of the mask labels.
-        calculate_particle_statistics: Calculate statistics of the particles.
+        ## Analysis methods
+        calculate_properties: Calculate properties of the scan and the particles.
+        contact_area_analysis: Calculate the contact area between the particles.
+        mask_analysis: Calculate properties of the mask.
+        calculate_particle_statistics: Calculate properties of the particles.
 
+        ## Visualization methods
+        show: Show the scan and the masks in napari.
+        show_nb: Show the scan and the masks in a Jupyter notebook.
+        show_hist: Show a histogram of the scan.
 
-        Utility:
-        show: Show the scan.
-
-
+        ## Utility methods
+        get_stack: Get the scan.
+        get_mask: Get the mask.
+        get_particle_mask: Get the particle mask.
+        get_tesselation: Get the tesselation.
 
     Attributes:
         path (str): Path to the scan.
-        stack (np.ndarray): 3D numpy array with the scan with slice_range or discard_ends applied.
-        _stack (np.ndarray): 3D numpy array with the original scan.
-        mask (np.ndarray): 3D numpy array with the mask with slice_range or discard_ends applied.
-        _mask (np.ndarray): 3D numpy array with the original mask.
-
+        export_path (str): Path to the export folder.
+        downscale (bool): Whether to downscale the scan.
+        _stack (np.ndarray): Scan for internal use.
+        _mask (np.ndarray): Mask for internal use.
+        _particle_mask (np.ndarray): Particle mask for internal use.
+        _tesselation (np.ndarray): Tesselation for internal use.
         voxel_size_mm (float): Voxel size in mm.
+        voxel_volume_mm3 (float): Volume of a voxel in mm^3.
         scan_dimensions_mm (tuple): Dimensions of the scan in mm.
         V_mm3 (float): Volume of the scan in mm^3.
-        contact_areas_mm2 (dict): Contact areas of the mask labels in mm^2.
-        particle_statistics (dict): Statistics of the particles.
-        n_particles (int): Number of particles.
-
-        slice_orientation (list): Orientation of the slices.
-        slice_range (tuple): Range of slices used for analysis
+        analytics (dict): Dictionary to store analysis results.
+        slice_range (tuple): Range of slices to consider.
         discard_ends (bool): Whether to discard the ends of the scan.
-        segmentation_settings (SegmentationSettings): Settings for the segmentation.
+        segmentation_settings (SegmentationSettings): Segmentation settings.
+        particle_segmentation_settings (SegmentationSettings): Particle segmentation settings.
         """
     discard_ends_size = 80
 
@@ -92,6 +103,7 @@ class Scan:
         the available properties are read from files.
 
         Args:
+            refresh (bool): Whether to not load the pickled Scan object.
             logging (bool): Whether to print logging information.
 
         Returns:
@@ -103,7 +115,6 @@ class Scan:
             print("Loading pickled Scan object from: {}".format(self.export_path + "Scan.pkl"))
             self._load_scan_object()
         else:
-            # TODO: read other relevant properties from the files
             self.voxel_size_mm = read_scan_properties(self.path)
 
         self._load_stack(logging=logging)
@@ -114,6 +125,11 @@ class Scan:
         if self.downscale: self._downscale_stack()
 
     def save(self, logging: bool = False):
+        """Save the scan and its properties to files.
+
+        Saves the scan and its properties to a pickled Scan object, the segmentation, particle mask and Voronoi
+        tesselation to numpy files. """
+
         all_attributes = {}
         for key, value in self.__dict__.items():
             if key not in ["_stack", "_mask", "_particle_mask", "_tesselation", "path", "export_path", "downscale"]:
@@ -134,7 +150,16 @@ class Scan:
                      region_of_interest: tuple[float, float, float] = None,
                      aspect_ratio: float = 2,
                      fixed_length_type: str = "overview"):
-        """Save a slice of either scan or mask to a file."""
+        """Save a slice of either scan or a mask to a file.
+
+        Args:
+            image_type (str): Type of image to export. Choose from 'stack', 'mask', 'particle_mask' or 'tesselation'.
+            axis (str): Axis to slice along. Choose from 'x', 'y' or 'z'.
+            slice_idx (int): Index of the slice to export.
+            region_of_interest (tuple): Region of interest to export. Format: (x_min, y_min, width).
+            aspect_ratio (float): Aspect ratio of the exported image.
+            fixed_length_type (str): Type of fixed length to use. Choose from 'overview', 'particle' or 'detail'.
+            """
         if self.downscale:
             print("Stack was downscaled, operation cancelled. Please load the full scan.")
             return
@@ -162,6 +187,7 @@ class Scan:
                                   subset_size: int = 100,
                                   autorun: bool = True,
                                   segment_particles_only: bool = False):
+        """Try segmentation settings on a subset of the scan interactively in napari"""
 
         adjust_segmentation_parameters_on_subset(scan=self.get_stack(),
                                                  subset_size=subset_size,
@@ -175,19 +201,21 @@ class Scan:
         self.particle_segmentation_settings = settings
 
     def segment(self):
+        """Segment the scan into air, polymer and aluminum regions."""
         mask = segment_scan(self.get_stack(),
                             settings=self.segmentation_settings)
-
         # pad mask with zero images to match the original stack
         self._mask = self._pad_mask(mask)
 
     def segment_particles(self):
+        """Create instance segmentation of the particles."""
         mask = particle_segmentation(self.get_stack(),
                                      settings=self.particle_segmentation_settings)
 
         self._particle_mask = self._pad_mask(mask)
 
     def voronoi_tesselation(self):
+        """Perform a Voronoi tesselation on the particles."""
         v_tess = voronoi_tesselation(self.get_stack(),
                                      settings=self.particle_segmentation_settings)
 
@@ -198,6 +226,7 @@ class Scan:
 
     def calculate_properties(self,
                              logging: bool = False):
+        """Calculate all properties of the scan and the particles."""
         self.scan_dimensions_mm = self._calc_dimensions()
         self.V_mm3 = self._calc_volume()
         logging and print("Starting mask analysis.")
@@ -208,6 +237,7 @@ class Scan:
         self.contact_area_analysis()
 
     def contact_area_analysis(self, grid: tuple[int, int] = (5, 5)):
+        """Generate analytics for the bonding plane slice."""
         tess = np.transpose(self.get_tesselation(), get_transpose_order(stack=self.get_stack(), axis="z"))
         mask = np.transpose(self.get_mask(), get_transpose_order(stack=self.get_stack(), axis="z"))
         mid_idx = tess.shape[0] // 2
@@ -221,6 +251,7 @@ class Scan:
         self.analytics.update({"2d_cell_area": cell_area, "2d_contact_pct": contact_pct})
 
     def mask_analysis(self):
+        """Generate contact analytics for the mask."""
         props: dict = dict()
         props["air_Al_contact_area_mm2]"] = contact_area(self.get_mask(), 1, 3) * self.voxel_size_mm ** 2
         props["polymer_Al_contact_area_mm2"] = contact_area(self.get_mask(), 2, 3) * self.voxel_size_mm ** 2
@@ -231,6 +262,7 @@ class Scan:
         self.analytics.update({"mask_analytics": props})
 
     def calculate_particle_statistics(self):
+        """Calculate statistics of the particles."""
         mask = cle.pull(cle.exclude_labels_on_edges(self.get_particle_mask()))
         props = cle.statistics_of_labelled_pixels(mask)
         volumes_voxel, _ = skimage.exposure.histogram(mask)
@@ -241,7 +273,11 @@ class Scan:
     # Utility methods
     def show(self,
              axis: str = "y"):
+        """Utility function to show the scan with all masks overlayed in napari.
 
+        Args:
+            axis (str): Axis to show. Choose from 'x', 'y' or 'z'.
+        """
         order = get_transpose_order(stack=self.get_stack(), axis=axis)
         t = lambda x: np.transpose(x, order) if x is not None else None
         show_in_napari(t(self.get_stack()),
@@ -255,13 +291,14 @@ class Scan:
                 alpha=0.3,
                 x_size: int = 30,
                 axis: str = "z") -> None:
-        """Utility function to show the scan with the mask overlayed in a Jupyter notebook
+        """Utility function to show the scan with a mask overlayed in a Jupyter notebook
         when napari is not available.
 
         Args:
             mask_type (str): Type of mask to show. Choose from 'mask', 'particle_mask' or 'tesselation'.
             alpha (float): Transparency of the mask overlay.
             x_size (int): Width modifier for the figure.
+            axis (str): Axis to show. Choose from 'y' or 'z'.
         """
         mask_types: dict = {"mask": self.get_mask(),
                             "particle_mask": self.get_particle_mask(),
@@ -310,6 +347,8 @@ class Scan:
             axs.axis("off")
 
     def show_hist(self):
+        """Show a histogram of the scan.
+        """
         fig, axs = plt.subplots(1, figsize=(20, 10))
         axs.hist(self.get_stack().flatten(), bins=200)
         # logarithmic axis
@@ -339,6 +378,7 @@ class Scan:
     #
     # segmentation utility methods
     def _apply_slice(self, stack):
+        """Apply slice range or discard ends to the stack."""
         if self.slice_range is not None:
             return stack[self.slice_range[0]:self.slice_range[1], :, :]
         elif self.discard_ends:
@@ -347,6 +387,7 @@ class Scan:
             return stack
 
     def _pad_mask(self, mask):
+        """Pad the mask with zeros to match the original stack."""
         if self.slice_range is not None:
             return np.pad(mask,
                           ((self.slice_range[0], self.get_stack().shape[0] - self.slice_range[1]), (0, 0), (0, 0)))
@@ -357,22 +398,26 @@ class Scan:
 
     # calculation methods
     def _calc_dimensions(self):
+        """Calculate the dimensions of the scan in mm."""
         h, w, d = self.get_stack().shape
         return (h * self.voxel_size_mm,
                 w * self.voxel_size_mm,
                 d * self.voxel_size_mm)
 
     def _calc_volume(self) -> float:
+        """Calculate the volume of the scan in mm^3."""
         return float(np.prod(self.scan_dimensions_mm))
 
     # IO methods
     def _set_export_path(self):
+        """Sets the export path for the scan."""
         ex_path = self.path.replace("04_uCT", "06_Results/uCT")
         if not os.path.exists(ex_path):
             os.makedirs(ex_path)
         return ex_path
 
     def _np_load(self, name, logging: bool = False):
+        """Load stack from numpy file."""
         if not os.path.exists(self.export_path + name + ".npy"):
             logging and print("No {} file found at: {}".format(name, self.export_path + name + ".npy"))
             return
@@ -382,11 +427,13 @@ class Scan:
         logging and print("Loaded {} from: {}".format(name, self.export_path + name + ".npy"))
 
     def _load_stack(self, logging: bool = False):
+        """Load stack from image files."""
         self._stack = load_stack(path=self.path,
                                  folder="Slices",
                                  logging=logging)
 
     def _load_scan_object(self):
+        """Load the scan object from a pickled file."""
         with open(self.export_path + "Scan.pkl", "rb") as f:
             all_attributes = pickle.load(f)
             for key, value in all_attributes.items():
@@ -406,6 +453,10 @@ class Scan:
             np.save(self.export_path + "_tesselation.npy", self._tesselation)
 
     def _downscale_stack(self):
+        """Downscale the stack by a factor of 2.
+
+        The stack is binned by a factor of 2 in each dimension. The image is first cropped to an even size to allow
+        for binning without artifacts."""
         me = lambda x: x if x % 2 == 0 else x - 1
         n, w, h = self._stack.shape
         self._stack = downscale_local_mean(self._stack[:me(n), :me(w), :me(h)],
@@ -429,6 +480,7 @@ class Scan:
         return os.path.exists(self.export_path + "Scan.pkl")
 
     def __getitem__(self, item):
+        """Define slice behavior for the Scan object."""
         return self.get_stack()[item]
 
     def __str__(self):

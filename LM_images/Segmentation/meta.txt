@@ -1,2 +1,0 @@
-name,umPerPixel
-Overview_01.tif,1.515

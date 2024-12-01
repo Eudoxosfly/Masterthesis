@@ -2,6 +2,14 @@ import numpy as np
 
 
 def get_func_gen_settings(on_time, off_time, passes, focus_distance, legacy=False, verbose=False):
+    """Calculate the settings for the function generator based on the given parameters.
+
+    This function translates the desired on-time, off-time and passes at a given focus distance into
+    the settings for the function generator and laser scanning speed.
+
+    The speed is rounded to one decimal place before further calculations.
+    In legacy mode, it is rounded down to the nearest integer.
+    """
     spot_width, spot_length = get_spot_size(focus_distance)
     p_laser = 30  # laser power in W
 
@@ -46,7 +54,9 @@ def get_func_gen_settings(on_time, off_time, passes, focus_distance, legacy=Fals
 
 
 def get_spot_size(distance):
-    """Calculate the spot size (mm) in x and y direction for a given focus distance."""
+    """Calculate the spot size (mm) in x and y direction for a given focus distance.
+
+    The coefficients were calculated by linear regression of trace width measurements at different focus distances."""
 
     def get_size(coef, dist):
         return coef[0] * dist + coef[1]

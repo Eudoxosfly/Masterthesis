@@ -1,5 +1,8 @@
 import matplotlib
 
+# This file contains all constants used in the project
+
+# All specimen for analysis in general
 ANALYSIS_SPECIMEN = ["BA38",
                      "BA37",
                      "BA36",
@@ -39,6 +42,7 @@ ANALYSIS_SPECIMEN = ["BA38",
                      "BA07",
                      "BA05"]
 
+# All specimen for high quality analysis
 ANALYSIS_SPECIMEN2 = ["AD12",
                       "AD14",
                       "AD16",
@@ -60,10 +64,12 @@ ANALYSIS_SPECIMEN2 = ["AD12",
                       "AD66",
                       "AD67", ]
 
+# Custom color map for the segmentation of the bonding region
 CMAP_MASK = matplotlib.colors.ListedColormap(((1, 1, 0.6),
                                               (0.2, 1, 1),
                                               (0.627, 0.627, 0.627)
                                               ))
 
+# Scale factors for the 2D and 3D to calculate correct voxel sizes for areas and volumes from binned scans
 SCALE_FACTOR_2D = 2 ** 2
 SCALE_FACTOR_3D = 2 ** 3
